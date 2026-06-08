@@ -1,0 +1,80 @@
+import os
+
+from sklearn.pipeline import Pipeline
+
+from src.infrastructure.storage_client import StorageClient
+from src.ml.transformers import (
+    DailyReturnTransformer,
+    EMATransformer,
+    FeatureSelector,
+    RSITransformer,
+)
+
+
+def run_data_processing(ticker: str = "JNJ"):
+    storage = StorageClient()
+
+    # ==========================================
+    # 1. CAMADA BRONZE -> CAMADA SILVER (Limpeza)
+    # ==========================================
+    print(f"Carregando dados brutos da camada Bronze ({ticker})...")
+    df_bronze = storage.load_parquet(
+        bucket="bronze", file_path=f"{ticker}/raw_data.parquet"
+    )
+
+    print("Limpando dados para a camada Silver...")
+    # Removemos linhas vazias e ordenamos pela data (crucial para séries temporais)
+    # Nota: O yfinance pode retornar colunas como 'Close' ou 'Close_XYZ' dependendo da versão/ticker.
+    # Procuramos a coluna que contém 'Close' e 'Date'
+    close_col = [c for c in df_bronze.columns if "Close" in c][0]
+    date_col = [c for c in df_bronze.columns if "Date" in c][0]
+    df_silver = (
+        df_bronze.dropna(subset=[close_col, date_col]).sort_values(date_col).copy()
+    )
+
+    # Salva na camada Silver
+    storage.save_parquet(
+        df_silver, bucket="silver", file_path=f"{ticker}/cleaned_data.parquet"
+    )
+    print("Dados limpos salvos na camada Silver!")
+
+    # ==========================================
+    # 2. CAMADA SILVER -> CAMADA GOLD (Features)
+    # ==========================================
+    print("Gerando Features para a camada Gold...")
+
+    target_features = [
+        "Date",  # Mantemos a data por agora para podermos indexar mais tarde
+        "Return_Close",
+        "RSI_15",
+        "Dist_EMA_20",
+        "Dist_EMA_100",
+        "Dist_EMA_150",
+    ]
+
+    # Identifica a coluna de fechamento real para os transformadores
+    actual_close_col = [c for c in df_silver.columns if "Close" in c][0]
+
+    # Pipeline de Features (SEM O SCALER!)
+    feature_pipeline = Pipeline(
+        [
+            ("daily_return", DailyReturnTransformer(column=actual_close_col)),
+            ("rsi", RSITransformer(window=15, column=actual_close_col)),
+            (
+                "ema_distances",
+                EMATransformer(windows=[20, 100, 150], column=actual_close_col),
+            ),
+            ("selector", FeatureSelector(features=target_features)),
+        ]
+    )
+
+    df_gold = feature_pipeline.fit_transform(df_silver)
+
+    # Salva na camada Gold
+    storage.save_parquet(df_gold, bucket="gold", file_path=f"{ticker}/features.parquet")
+    print("Features finais salvas na camada Gold com sucesso!")
+
+
+if __name__ == "__main__":
+    TARGET_TICKER = os.getenv("TARGET_TICKER", "JNJ")
+    run_data_processing(TARGET_TICKER)

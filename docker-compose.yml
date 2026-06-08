@@ -1,0 +1,65 @@
+name: Fase4
+
+services:
+  # ---------------------------------------------------------
+  # MinIO: O nosso Data Lake local (Substitui o AWS S3)
+  # ---------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000" # Porta da API (usada pelo boto3/Python)
+      - "9001:9001" # Porta da Interface Gráfica (Web UI)
+    env_file: ".env/minio.env"
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ---------------------------------------------------------
+  # MinIO Init: Container efêmero para criar os buckets
+  # ---------------------------------------------------------
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio_init
+    depends_on:
+      minio:
+        condition: service_healthy # Só roda quando o MinIO estiver 100% pronto
+    env_file: ".env/minio.env"
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Configurando o alias do MinIO...';
+      mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+
+      echo 'Criando os buckets do Data Lake...';
+      mc mb myminio/bronze --ignore-existing;
+      mc mb myminio/silver --ignore-existing;
+      mc mb myminio/gold --ignore-existing;
+
+      echo 'Configuração do MinIO concluída!';
+      "
+
+  # ---------------------------------------------------------
+  # PostgreSQL: Base de metadados
+  # ---------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    env_file: ".env/postgres.env"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  minio_data:
+  postgres_data:
