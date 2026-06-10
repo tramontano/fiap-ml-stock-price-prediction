@@ -223,3 +223,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+context.md
+GEMINI.md
+dependency_mapper.py

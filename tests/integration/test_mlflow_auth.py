@@ -53,4 +53,4 @@ def test_mlflow_connection_success():
         mlflow.search_runs()
         print("\n[OK] Conexão com MLflow/DagsHub estabelecida com sucesso!")
     except Exception as e:
-        pytest.fail(f"Falha na autenticação com o MLflow: {e}")
+        pytest.fail(f"Falha na conexão com o MLflow: {e}")

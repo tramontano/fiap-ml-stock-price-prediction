@@ -1,47 +1,54 @@
 import os
 from typing import Union
 
+import pandas as pd
 import yfinance as yf
 from pandas import DataFrame
 
 from src.infrastructure.storage_client import StorageClient
 
 
-def run_ingestion(ticker: str, start_date: str, end_date: str):
+def run_ingestion(
+    ticker: Union[str, None] = None,
+    start_date: Union[str, None] = None,
+    end_date: Union[str, None] = None,
+):
     """
     Extrai dados financeiros de uma ação e guarda na camada Bronze do Data Lake.
     """
-    print(f"Iniciando a extração de dados para {ticker} ({start_date} a {end_date})...")
+    print(f"Iniciando a extração de dados para {ticker}...")
 
     # 1. Extração
     data: Union[DataFrame, None] = yf.download(
-        ticker, start=start_date, end=end_date, progress=False
+        ticker, start=start_date, end=end_date, group_by="ticker", progress=False
     )
-
     if data is None or data.empty:
         raise ValueError(f"Não foram encontrados dados para o ticker {ticker}.")
 
     # 2. Formatação Base
-    # O yfinance coloca a Data no index, precisamos dela como uma coluna normal
+    # Extract first and last closing dates
+    first_date = data.index[0].strftime("%Y%m%d")
+    last_date = data.index[-1].strftime("%Y%m%d")
+    parquet_name = f"{ticker}/{first_date}_{last_date}.parquet"
+    # Achata as colunas caso o yfinance retorne um MultiIndex
+    data = data[ticker]
     data.reset_index(inplace=True)
+    # O yfinance coloca a Data no index, precisamos dela como uma coluna normal
+    data["Date"] = pd.to_datetime(data["Date"]).dt.tz_localize(None)
 
-    # Achata as colunas caso o yfinance retorne um MultiIndex (comum nas novas versões)
-    data.columns = [
-        "_".join(col).strip() if isinstance(col, tuple) else col for col in data.columns
-    ]
-    # Remove underscores soltos caso seja apenas um ticker
-    data.columns = [
-        col.replace("_", "") if col.endswith("_") else col for col in data.columns
-    ]
+    print(f"Foram extraídas {len(data)} linhas. A preparando upload...")
 
-    print(f"Foram extraídas {len(data)} linhas. A preparar para guardar...")
+    storage = StorageClient()
 
     # 3. Guardar no Armazenamento (Camada Bronze)
-    storage = StorageClient()
-    file_path = f"{ticker}/raw_data.parquet"
+    if storage.file_exists(bucket="bronze", file_path=parquet_name):
+        print(f"Cache hit, skipping upload: {parquet_name}")
+    else:
+        storage.save_parquet(data, bucket="bronze", file_path=parquet_name)
 
-    storage.save_parquet(df=data, bucket="bronze", file_path=file_path)
     print("Ingestão concluída com sucesso")
+
+    return data, parquet_name
 
 
 if __name__ == "__main__":

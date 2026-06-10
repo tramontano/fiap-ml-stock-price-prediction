@@ -1,6 +1,5 @@
 import numpy as np
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
 
 from src.ml.transformers import (
     DailyReturnTransformer,
@@ -32,20 +31,20 @@ def build_feature_pipeline() -> Pipeline:
             # 2. Calcula o RSI
             ("rsi", RSITransformer(window=15, column="Close")),
             # 3. Calcula as distâncias para as EMAs
-            ("ema_distances", EMATransformer(windows=[20, 100, 150], column="Close")),
+            ("ema_distances", EMATransformer(windows=[5, 10, 15], column="Close")),
             # 4. Remove o 'Close', 'Open', 'High', etc., deixando apenas as features estacionárias
             ("selector", FeatureSelector(features=target_features)),
             # 5. Coloca todas as features na mesma escala (Média 0, Desvio Padrão 1)
             # O LSTM precisa disto para não dar mais peso ao RSI (escala 0-100) do que aos retornos
             # (escala -0.1 a 0.1)
-            ("scaler", StandardScaler()),
+            # ("scaler", StandardScaler()),
         ]
     )
 
     return features
 
 
-def create_sequences(data: np.ndarray, time_steps: int = 30) -> tuple:
+def create_sequences(data: np.ndarray, time_steps: int = 20) -> tuple:
     """
     Transforma um array 2D de features num formato 3D supervisionado para o LSTM.
     Retorna X (features) e y (alvo a prever).
@@ -54,7 +53,7 @@ def create_sequences(data: np.ndarray, time_steps: int = 30) -> tuple:
     for i in range(len(data) - time_steps):
         X.append(data[i : (i + time_steps)])
         # Assume que o alvo (Retorno) está na coluna 0.
-        # No nosso pipeline, 'Return_Close' é de facto a primeira feature.
+        # No nosso pipeline, 'Return_Close' é de fato a primeira feature.
         y.append(data[i + time_steps, 0])
 
     return np.array(X), np.array(y)

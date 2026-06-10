@@ -11,16 +11,14 @@ from src.ml.transformers import (
 )
 
 
-def run_data_processing(ticker: str = "JNJ"):
+def run_data_processing(ticker: str = "JNJ", parquet_name: str = "data.parquet"):
     storage = StorageClient()
 
     # ==========================================
     # 1. CAMADA BRONZE -> CAMADA SILVER (Limpeza)
     # ==========================================
     print(f"Carregando dados brutos da camada Bronze ({ticker})...")
-    df_bronze = storage.load_parquet(
-        bucket="bronze", file_path=f"{ticker}/raw_data.parquet"
-    )
+    df_bronze = storage.load_parquet(bucket="bronze", file_path=parquet_name)
 
     print("Limpando dados para a camada Silver...")
     # Removemos linhas vazias e ordenamos pela data (crucial para séries temporais)
@@ -33,9 +31,7 @@ def run_data_processing(ticker: str = "JNJ"):
     )
 
     # Salva na camada Silver
-    storage.save_parquet(
-        df_silver, bucket="silver", file_path=f"{ticker}/cleaned_data.parquet"
-    )
+    storage.save_parquet(df_silver, bucket="silver", file_path=parquet_name)
     print("Dados limpos salvos na camada Silver!")
 
     # ==========================================
@@ -47,9 +43,9 @@ def run_data_processing(ticker: str = "JNJ"):
         "Date",  # Mantemos a data por agora para podermos indexar mais tarde
         "Return_Close",
         "RSI_15",
-        "Dist_EMA_20",
-        "Dist_EMA_100",
-        "Dist_EMA_150",
+        "Dist_EMA_5",
+        "Dist_EMA_10",
+        "Dist_EMA_15",
     ]
 
     # Identifica a coluna de fechamento real para os transformadores
@@ -62,7 +58,7 @@ def run_data_processing(ticker: str = "JNJ"):
             ("rsi", RSITransformer(window=15, column=actual_close_col)),
             (
                 "ema_distances",
-                EMATransformer(windows=[20, 100, 150], column=actual_close_col),
+                EMATransformer(windows=[5, 10, 15], column=actual_close_col),
             ),
             ("selector", FeatureSelector(features=target_features)),
         ]
@@ -71,10 +67,11 @@ def run_data_processing(ticker: str = "JNJ"):
     df_gold = feature_pipeline.fit_transform(df_silver)
 
     # Salva na camada Gold
-    storage.save_parquet(df_gold, bucket="gold", file_path=f"{ticker}/features.parquet")
+    storage.save_parquet(df_gold, bucket="gold", file_path=parquet_name)
     print("Features finais salvas na camada Gold com sucesso!")
+    return df_silver, df_gold
 
 
 if __name__ == "__main__":
     TARGET_TICKER = os.getenv("TARGET_TICKER", "JNJ")
-    run_data_processing(TARGET_TICKER)
+    run_data_processing(TARGET_TICKER, "JNJ/19850102_20251230.parquet")

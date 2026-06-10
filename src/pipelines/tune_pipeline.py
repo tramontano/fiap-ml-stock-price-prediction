@@ -1,11 +1,9 @@
 import os
 
-import mlflow
 import dagshub
+import mlflow
 import numpy as np
 import optuna
-import tensorflow as tf
-import tensorflow.keras as keras
 from dotenv import load_dotenv
 from sklearn.metrics import (
     mean_absolute_error,
@@ -23,11 +21,9 @@ from src.ml.model import build_lstm_model
 load_dotenv(".env/mlflow.env")
 
 # Inicializando dagshub
-dagshub.init(repo_owner='tramontano', repo_name='fiap-ml-stock-price-prediction', mlflow=True)
-
-# Monkey Patch: Injeta a versão no Keras para o MLflow não dar erro
-if not hasattr(keras, "__version__"):
-    keras.__version__ = tf.__version__
+dagshub.init(
+    repo_owner="tramontano", repo_name="fiap-ml-stock-price-prediction", mlflow=True
+)
 
 # Configuração do MLflow ligada ao DagsHub
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
@@ -38,13 +34,13 @@ if MLFLOW_TRACKING_URI:
     os.environ["MLFLOW_TRACKING_PASSWORD"] = os.getenv("MLFLOW_TRACKING_PASSWORD", "")
 
 
-def load_and_prepare_data(ticker: str = "JNJ", time_steps: int = 30):
+def load_and_prepare_data(
+    ticker: str = "JNJ", time_steps: int = 20, parquet_name: str = "data.parquet"
+):
     """Carrega dados da camada GOLD e aplica o StandardScaler."""
     print("Carregando dados da camada Gold...")
     storage = StorageClient()
-    df_gold = storage.load_parquet(
-        bucket="gold", file_path=f"{ticker}/features.parquet"
-    )
+    df_gold = storage.load_parquet(bucket="gold", file_path=parquet_name)
 
     # Indexamos a data e isolamos as features num array NumPy
     df_gold.set_index("Date", inplace=True)
@@ -129,8 +125,15 @@ def objective(trial, X_train, y_train, X_val, y_val):
         # Regista as métricas no MLflow
         mlflow.log_metrics(metricas)
 
+        # Monkey Patch: Injeta a versão no Keras para o MLflow não dar erro
+        import tensorflow as tf
+        import tensorflow.keras as keras
+
+        if not hasattr(keras, "__version__"):
+            keras.__version__ = tf.__version__
         # Guardar o modelo no MLflow se for o melhor até agora
         mlflow.keras.log_model(model, "lstm_model")
+        mlflow.sklearn.log_model(fitted_pipeline, "feature_pipeline")
 
     return metricas["rmse"]  # O Optuna vai tentar MINIMIZAR este valor
 
@@ -140,11 +143,11 @@ if __name__ == "__main__":
 
     # 1. Preparação dos dados
     X_train, y_train, X_val, y_val, fitted_pipeline = load_and_prepare_data(
-        ticker="JNJ", time_steps=30
+        ticker="JNJ", time_steps=20, parquet_name="JNJ/19850102_20251230.parquet"
     )
 
     # 2. Configura a experiência principal no MLflow
-    mlflow.set_experiment("stock-price-lstm-optimization")
+    mlflow.set_experiment("stock-price-lstm")
 
     # Iniciamos uma "run" pai no MLflow para agrupar todas as tentativas do Optuna
     with mlflow.start_run(run_name="Optuna_Optimization"):
@@ -154,7 +157,7 @@ if __name__ == "__main__":
         # Executa N tentativas (trials)
         print("Iniciando o Optuna (10 tentativas). Pode demorar alguns minutos...")
         study.optimize(
-            lambda trial: objective(trial, X_train, y_train, X_val, y_val), n_trials=50
+            lambda trial: objective(trial, X_train, y_train, X_val, y_val), n_trials=5
         )
 
         print("\nOtimização concluída!")

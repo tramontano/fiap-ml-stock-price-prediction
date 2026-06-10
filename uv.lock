@@ -692,6 +692,9 @@ dependencies = [
     { name = "boto3" },
     { name = "dagshub" },
     { name = "fastapi" },
+    { name = "matplotlib" },
+    { name = "mlflow" },
+    { name = "networkx" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyarrow" },
@@ -699,6 +702,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "scikit-learn" },
     { name = "setuptools" },
+    { name = "starlette-context" },
     { name = "tensorflow" },
     { name = "tensorflow-intel" },
     { name = "tensorflow-io-gcs-filesystem" },
@@ -711,7 +715,6 @@ dev = [
     { name = "ipykernel" },
     { name = "jupyter" },
     { name = "matplotlib" },
-    { name = "mlflow" },
     { name = "optuna" },
     { name = "pytest" },
     { name = "ruff" },
@@ -726,6 +729,9 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.43.24" },
     { name = "dagshub", specifier = ">=0.7.0" },
     { name = "fastapi", specifier = ">=0.136.3" },
+    { name = "matplotlib", specifier = ">=3.10.9" },
+    { name = "mlflow", specifier = ">=1.27.0" },
+    { name = "networkx", specifier = ">=3.6.1" },
     { name = "numpy", specifier = "<2.0.0" },
     { name = "pandas", specifier = ">=3.0.3" },
     { name = "pyarrow", specifier = ">=24.0.0" },
@@ -733,6 +739,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "scikit-learn", specifier = ">=1.9.0" },
     { name = "setuptools", specifier = "<70.0.0" },
+    { name = "starlette-context", specifier = ">=0.5.1" },
     { name = "tensorflow", specifier = "<2.16" },
     { name = "tensorflow-intel", specifier = ">=2.14.0" },
     { name = "tensorflow-io-gcs-filesystem", specifier = "==0.31.0" },
@@ -745,7 +752,6 @@ dev = [
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "matplotlib", specifier = ">=3.10.9" },
-    { name = "mlflow", specifier = ">=1.27.0" },
     { name = "optuna", specifier = ">=4.9.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "ruff", specifier = ">=0.15.16" },
@@ -1933,6 +1939,15 @@ wheels = [
 ]
 
 [[package]]
+name = "networkx"
+version = "3.6.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/51/63fe664f3908c97be9d2e4f1158eb633317598cfa6e1fc14af5383f17512/networkx-3.6.1.tar.gz", hash = "sha256:26b7c357accc0c8cde558ad486283728b65b6a95d85ee1cd66bafab4c8168509", size = 2517025, upload-time = "2025-12-08T17:02:39.908Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9e/c9/b2622292ea83fbb4ec318f5b9ab867d0a28ab43c5717bb85b0a5f6b3b0a4/networkx-3.6.1-py3-none-any.whl", hash = "sha256:d47fbf302e7d9cbbb9e2555a0d267983d2aa476bac30e90dfbe5669bd57f3762", size = 2068504, upload-time = "2025-12-08T17:02:38.159Z" },
+]
+
+[[package]]
 name = "notebook"
 version = "7.5.7"
 source = { registry = "https://pypi.org/simple" }
@@ -2987,6 +3002,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/25/44/ec35f1b6e83094b997da438a02c8c9b0ade2b1e84cfc48bd4656780760a6/starlette-1.2.1.tar.gz", hash = "sha256:9b9b5ebb992e67d6093741e63c2f59e4f6fff986f81163c087867bd7b924b3f6", size = 2701854, upload-time = "2026-05-31T01:07:51.847Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1c/54/196d0c1db10af76baa4f64894448505d60d3cdf70ef92cbb35f46a4e4c71/starlette-1.2.1-py3-none-any.whl", hash = "sha256:4de0082d08c8f6764a85a54cf1120d6939507a19905c7768acad2a9f875d2b89", size = 73350, upload-time = "2026-05-31T01:07:50.09Z" },
+]
+
+[[package]]
+name = "starlette-context"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "starlette" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/29/fd/d28907759adf31f1112e71006b649c81a74a115b8c14645f87a5f5c83dd3/starlette_context-0.5.1.tar.gz", hash = "sha256:f6025753f8ede041778b2f2c3823e2da9df3c2d94832575bcb59374216b7c2b2", size = 8397, upload-time = "2026-02-28T11:32:00.185Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/9f/c1d842f7a628a1aaa6754f3e7d28218978af8ed28170c7f9eec49dc6401a/starlette_context-0.5.1-py3-none-any.whl", hash = "sha256:df55da1d7ae3453e89874b9d5c1d40a98dd2f1293c37791dd7c1a907087c9b5e", size = 12836, upload-time = "2026-02-28T11:32:01.254Z" },
 ]
 
 [[package]]

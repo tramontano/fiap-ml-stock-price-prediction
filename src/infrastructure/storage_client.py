@@ -3,6 +3,7 @@ from io import BytesIO
 
 import boto3
 import pandas as pd
+from botocore.exceptions import ClientError
 
 
 class StorageClient:
@@ -48,4 +49,15 @@ class StorageClient:
             return pd.read_parquet(BytesIO(parquet_content))
         except Exception as e:
             print(f"Erro ao ler ficheiro do S3: {e}")
+            raise e
+
+    def file_exists(self, bucket: str, file_path: str) -> bool:
+        """Verifica se um ficheiro já existe no bucket do Data Lake."""
+        try:
+            self.s3_client.head_object(Bucket=bucket, Key=file_path)
+            return True
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                return False
+            # Qualquer outro erro (403 permissões, rede, etc.)
             raise e
