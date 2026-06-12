@@ -1,5 +1,5 @@
 # O .PHONY garante que o comando rode mesmo que exista um ficheiro com o mesmo nome na pasta
-.PHONY: install format test run train clean up down
+.PHONY: install format test run train promote clean up down
 
 install:
 	@echo "Instalando e sincronizando dependências com o uv..."
@@ -16,11 +16,19 @@ test:
 
 run:
 	@echo "Iniciando o servidor FastAPI em modo de desenvolvimento..."
-	uv run uvicorn src.api.routes:app --reload --host 0.0.0.0 --port 8000
+	uv run uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
 
 train:
 	@echo "Iniciando o pipeline de otimização e treino do modelo LSTM..."
 	uv run python -m src.pipelines.tune_pipeline
+
+promote:
+	@echo "Executando o script de promoção de modelos Challenger/Champion baseados em RMSE..."
+	uv run python src.pipelines.promote_model
+
+inference:
+	@echo "Executando o script de inferência..."
+	uv run python src.ml.inference
 
 clean:
 	@echo "Limpando ficheiros temporários, cache e artefatos de Python..."

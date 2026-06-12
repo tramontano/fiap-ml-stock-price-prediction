@@ -5,6 +5,11 @@ import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
 
+from src.core.config import settings
+from src.core.logging import setup_logging
+
+logger = setup_logging()
+
 
 class StorageClient:
     """
@@ -13,18 +18,57 @@ class StorageClient:
 
     def __init__(self):
         # Em produção (AWS), podemos deixar estes valores vazios e o boto3 usa as roles do IAM
-        self.endpoint_url = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
-        self.access_key = os.getenv("MINIO_ROOT_USER", "admin")
-        self.secret_key = os.getenv("MINIO_ROOT_PASSWORD", "admin123")
 
         # Inicializa o cliente S3
+        self.region_name = settings.AWS_REGION
+        self.endpoint_url = settings.S3_ENDPOINT_URL
+        self.access_key = settings.MINIO_ROOT_USER
+        self.secret_key = settings.MINIO_ROOT_PASSWORD
         self.s3_client = boto3.client(
             "s3",
             endpoint_url=self.endpoint_url,
             aws_access_key_id=self.access_key,
             aws_secret_access_key=self.secret_key,
-            region_name="us-east-1",  # Padrão
+            region_name=self.region_name,
         )
+
+    def download(self, local_path: str, bucket: str, file: str):
+        try:
+            logger.info(
+                f"Iniciando download de s3://{bucket}/{file} para {local_path}..."
+            )
+            os.makedirs(local_path, exist_ok=True)
+            if not self.file_exists(bucket, file):
+                logger.error(f"Ficheiro s3://{bucket}/{file} NÃO existe")
+                return False
+            self.s3_client.download_file(bucket, file, f"{local_path}/{file}")
+            logger.info("Download concluído com sucesso!")
+            return True
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                logger.error(f"Ficheiro {local_path}/{file} NÃO existe")
+                return False
+            # Qualquer outro erro (403 permissões, rede, etc.)
+            raise e
+
+    def upload(self, local_path: str, bucket: str, file: str):
+        try:
+            logger.info(f"Iniciando upload para s3://{bucket}/{file}...")
+            self.s3_client.upload_file(f"{local_path}/{file}", bucket, file)
+
+            logger.info("Validando a integridade do arquivo no bucket S3...")
+            response = self.s3_client.head_object(Bucket=bucket, Key=file)
+            file_size_mb = response["ContentLength"] / (1024 * 1024)
+            logger.info(
+                f"Validação com sucesso! Tamanho do arquivo: {file_size_mb:.2f} MB"
+            )
+            return True
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                logger.error(f"Ficheiro {local_path}/{file} NÃO existe")
+                return False
+            # Qualquer outro erro (403 permissões, rede, etc.)
+            raise e
 
     def save_parquet(self, df: pd.DataFrame, bucket: str, file_path: str) -> None:
         """Salva um DataFrame num bucket em formato Parquet."""
@@ -36,9 +80,9 @@ class StorageClient:
             self.s3_client.put_object(
                 Bucket=bucket, Key=file_path, Body=parquet_buffer.getvalue()
             )
-            print(f"Ficheiro guardado com sucesso: s3://{bucket}/{file_path}")
+            logger.info(f"Ficheiro guardado com sucesso: s3://{bucket}/{file_path}")
         except Exception as e:
-            print(f"Erro ao guardar ficheiro no S3: {e}")
+            logger.error(f"Erro ao guardar ficheiro no S3: {e}")
             raise e
 
     def load_parquet(self, bucket: str, file_path: str) -> pd.DataFrame:
@@ -48,16 +92,36 @@ class StorageClient:
             parquet_content = response["Body"].read()
             return pd.read_parquet(BytesIO(parquet_content))
         except Exception as e:
-            print(f"Erro ao ler ficheiro do S3: {e}")
+            logger.error(f"Erro ao ler ficheiro do S3: {e}")
             raise e
 
     def file_exists(self, bucket: str, file_path: str) -> bool:
         """Verifica se um ficheiro já existe no bucket do Data Lake."""
         try:
             self.s3_client.head_object(Bucket=bucket, Key=file_path)
+            logger.info(f"Ficheiro s3://{bucket}/{file_path} existe")
             return True
         except ClientError as e:
             if e.response["Error"]["Code"] == "404":
+                logger.error(f"Ficheiro s3://{bucket}/{file_path} NÃO existe")
                 return False
             # Qualquer outro erro (403 permissões, rede, etc.)
             raise e
+
+    def delete_parquet(self, bucket: str, file_path: str) -> None:
+        """Apaga um ficheiro Parquet do Data Lake."""
+        try:
+            self.s3_client.delete_object(Bucket=bucket, Key=file_path)
+            logger.info(f"Ficheiro apagado com sucesso: s3://{bucket}/{file_path}")
+        except Exception as e:
+            logger.error(f"Erro ao apagar ficheiro no S3: {e}")
+            raise e
+
+
+if __name__ == "__main__":
+    storage = StorageClient()
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [4, 5, 6]})
+    storage.save_parquet(df, "bronze", "test.parquet")
+    storage.file_exists("bronze", "test.parquet")
+    storage.delete_parquet("bronze", "test.parquet")
+    storage.file_exists("bronze", "test.parquet")

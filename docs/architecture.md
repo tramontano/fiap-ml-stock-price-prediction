@@ -51,4 +51,6 @@ A API não retreina modelos nem recalcula parâmetros de normalização de forma
 ## 5. Orquestração e Observabilidade
 
 * **Retreinamento Contínuo:** O Apache Airflow possui uma DAG configurada para ser engatilhada periodicamente (ex: a cada 30 dias), orquestrando o pipeline de dados e disparando um novo treinamento para capturar novas tendências de mercado.
-* **Monitoramento:** Logs da API e métricas de sistema (uso de CPU/RAM e latência de resposta) [cite: 37, 38] são unificados (via Loki/Promtail localmente ou CloudWatch na AWS), permitindo observabilidade completa da saúde do modelo em produção.
+* **Monitoramento:** Exposição ativa de métricas seguindo o padrão Prometheus através da biblioteca `prometheus-fastapi-instrumentator` na rota `/metrics` da API.
+  * **Local:** Coleta e scraping automatizados via servidor Prometheus integrado ao Docker Compose local, lendo dados de latência da API FastAPI e consumo de hardware de containers através do cAdvisor, centralizando visualizações no Grafana.
+  * **AWS (Produção):** A API permanece inalterada; a coleta é realizada por um container *sidecar* do AWS Distro for OpenTelemetry (ADOT), que consome o `/metrics` e canaliza os dados de tempo de resposta e performance de hardware para o Amazon CloudWatch Metrics ou AWS Managed Prometheus.

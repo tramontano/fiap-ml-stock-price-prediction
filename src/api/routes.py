@@ -1,162 +1,125 @@
-import os
-from contextlib import asynccontextmanager
+from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import JSONResponse
+from prometheus_client import Counter, Gauge, Histogram
 
-import mlflow
-import numpy as np
-import tensorflow as tf
-import tensorflow.keras as keras
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
-
-# Monkey Patch: Injeta a versão no Keras para o MLflow não dar erro
-if not hasattr(keras, "__version__"):
-    keras.__version__ = tf.__version__
-
-# Importa o módulo de logging
-from src.core.logging import APILoggingMiddleware, log_route, setup_logging
+from src.core.config import settings
+from src.core.logging import log_route, setup_logging
 from src.domain.schemas import PredictRequest, PredictResponse
-from src.pipelines.ingest_data import run_ingestion
+from src.ml.inference import predict
 
 # Configura o logging
 logger = setup_logging(use_json=True)
-mlflow.tensorflow.autolog()
 
-# Carrega as variáveis de ambiente (Credenciais DagsHub)
-load_dotenv(".env/mlflow.env")
+router = APIRouter(prefix=settings.API_V1_STR, tags=["Inference"])
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Executado no arranque do servidor.
-    Carrega o modelo do MLflow para a memória apenas UMA vez (Best Practice).
-    """
-    print("Iniciando a API e conectando ao Model Registry (DagsHub)...")
-
-    # Configura a conexão ao MLflow
-    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
-
-    # Num cenário real, usaríamos o nome do modelo registado ou o Run ID vencedor
-    run_id = os.getenv("BEST_RUN_ID", None)
-
-    try:
-        print(f"Baixando artefactos da Run: {run_id}")
-        pipeline = mlflow.sklearn.load_model(f"runs:/{run_id}/feature_pipeline")
-        model = mlflow.keras.load_model(f"runs:/{run_id}/lstm_model")
-
-        app.state.pipeline = pipeline
-        app.state.model = model
-        print("Modelo carregado com sucesso para a memória")
-    except Exception as e:
-        print(
-            f"Atenção: Não foi possível carregar o modelo. Verifique o RUN_ID. Erro: {e}"
-        )
-        # Para testes locais enquanto configura o MLflow, ignoramos o erro no arranque
-        raise e
-
-    yield  # O servidor fica rodando aqui
-
-
-# Cria a aplicação FastAPI
-app = FastAPI(
-    title="Stock Price Prediction API",
-    description="API de MLOps para previsão de ações usando LSTMs e Arquitetura Medalhão.",
-    version="1.0.0",
-    lifespan=lifespan,
+# --- Prometheus Setup ---
+# Define um medidor para guardar o valor da última previsão de preço
+model_drift = Gauge(
+    "model_drift",
+    "Average value of predictions made by the service",
+    # registry=prometheus_registry,
 )
-app.add_middleware(APILoggingMiddleware, logger=logger)
 
-# Adiciona CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+# Contador de requisições por Ticker e Modelo
+prediction_requests_total = Counter(
+    "prediction_requests_total",
+    "Total number of prediction requests",
+    ["ticker", "model_id"],
+    # registry=prometheus_registry,
+)
+
+# Histograma para medir a latência da inferência
+prediction_duration_seconds = Histogram(
+    "prediction_duration_seconds",
+    "Time spent processing prediction",
+    ["ticker"],
+    buckets=(0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0),
+    # registry=prometheus_registry,
+)
+
+# Gauge para monitorar o último preço predito (útil para dashboards de monitoramento de negócio)
+last_predicted_price = Gauge(
+    "last_predicted_price_usd",
+    "The last predicted price value in USD",
+    ["ticker", "model_id"],
+    # registry=prometheus_registry,
 )
 
 
-@app.get("/")
 @log_route(logger=logger, include_args=True)
-async def index(request: Request):
-    """Testa os dados recebidos na chamada API."""
-
-    response = {
-        "method": request.method,
-        "url": str(request.url),
-        **request.headers,
-        **request.query_params,
-    }
-    # return JSONResponse(context.data)  # Your context data
-    return JSONResponse(response)  # Your context data
-
-
-@app.post("/predict", response_model=PredictResponse)
-@log_route(logger=logger, include_args=True)
+@router.post(
+    "/predict",
+    response_model=PredictResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Realiza a previsão do próximo preço de fecho usando a rede LSTM",
+)
 async def predict_stock(payload: PredictRequest, request: Request):
     """Recebe um Ticker, busca os dados recentes e prevê o preço de amanhã."""
 
     # Puxa os modelos da memória do app
     model = getattr(request.app.state, "model", None)
     pipeline = getattr(request.app.state, "pipeline", None)
+    run_id = getattr(request.app.state, "run_id", None)
+
+    logger.info(
+        f"Estado de memoria: model={model}, pipeline={pipeline}, run_id={run_id}"
+    )
 
     if model is None or pipeline is None:
+        logger.error(
+            "Tentativa de inferência com a API desalinhada. Artefatos ausentes."
+        )
         raise HTTPException(
             status_code=503,
-            detail="Modelos não carregados no servidor. Verifique o MLflow.",
+            detail="O modelo de Machine Learning ou o Scaler ainda não estão disponíveis na memória.",
         )
 
     try:
-        # 1. Ingerindo dados
-        df_recent, paquet_name = run_ingestion(payload.ticker)
-        last_real_price = df_recent["Close"].iloc[-1]
-
-        # 2. Transformação (Usa o Pipeline treinado com o StandardScaler)
-        features_scaled = pipeline.transform(df_recent)
-
-        # 3. Criar a janela de 30 dias (Sliding Window) para o LSTM
-        X_input = features_scaled[-30:]
-
-        # O Keras espera formato 3D (Amostras, Passos_Temporais, Features) -> (1, 30, N_Features)
-        X_input_3d = np.expand_dims(X_input, axis=0)
-
-        # 4. Inferência (Previsão)
-        # O modelo devolve um Z-Score (ex: 1.25)
-        prediction_scaled = model.predict(X_input_3d)[0][0]
-
-        # 5. O Desfazer da Escala (Inverse Transform)
-        # Sabemos que o Scaler espera 5 features: ['Return_Close',
-        # 'RSI_15', 'Dist_EMA_20', 'Dist_EMA_100', 'Dist_EMA_150']
-        # O retorno é a primeira coluna (índice 0)
-        dummy_array = np.zeros((1, 5))
-        dummy_array[0, 0] = prediction_scaled
-
-        # Carregamos o Scaler que está dentro do nosso Pipeline
-        scaler = pipeline.named_steps["scaler"]
-
-        # Desfazemos a escala
-        prediction_inversed = scaler.inverse_transform(dummy_array)
-
-        # Agora sim, extraímos o retorno percentual real (ex: 0.012 para 1.2%)
-        predicted_return = float(prediction_inversed[0, 0])
-
-        # 6. Cálculo Final do Preço
-        predicted_price = float(last_real_price * (1 + predicted_return))
+        result = predict(
+            ticker=payload.ticker,
+            time_steps=20,
+            model=model,
+            scaler=pipeline,
+            run_id=run_id,
+        )
+        # Saída bruta do modelo (Return_Close)
+        predicted_return = float(result["return_pred"][-1])
+        # Desvio padrão das previsões de retorno
+        predicted_return_std_dev = float(result["return_std_dev"][-1])
+        # Nível de confiança da predição (0 a 100)
+        confidence_score = float(result["confidence_score"][-1])
+        model_drift.set(100 - confidence_score) if payload.ticker == "JNJ" else None
+        # Preço de fechamento pós-processado (em USD)
+        predicted_price_usd = float(result["price_pred"][-1])
+        # Data prevista no formato ISO 8601 (YYYY-MM-DD)
+        prediction_date_iso = result["dates"][-1].isoformat()
+        # Rastreabilidade de qual modelo gerou o resultado
+        prediction_model = str(result["model_id"])
 
         return PredictResponse(
             ticker=payload.ticker,
             predicted_return=predicted_return,
-            predicted_price_usd=predicted_price,
+            predicted_return_std_dev=predicted_return_std_dev,
+            confidence_score=confidence_score,
+            predicted_price_usd=predicted_price_usd,
+            prediction_date_iso=prediction_date_iso,
+            prediction_model=prediction_model,
         )
 
     except Exception as e:
+        logger.error(f"Erro ao processar predição: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@app.get("/health")
+@router.get("/health")
 async def health_check(request: Request):
-    """Endpoint para o Docker/Kubernetes saber se a API está viva."""
-    model_loaded = getattr(request.app.state, "model", None) is not None
-    return {"status": "healthy", "model_loaded": model_loaded}
+    """Verifica o status da API e retorna informações básicas.
+    Returns:
+        JSONResponse: Status da API, nome do serviço e versão.
+    """
+    payload = {
+        "status": "ok",
+        "service": settings.PROJECT_NAME,
+        "version": settings.PROJECT_VERSION,
+    }
+    return JSONResponse(status_code=200, content=payload)

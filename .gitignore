@@ -223,6 +223,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# LLM files
 context.md
 GEMINI.md
+RULES.md
 dependency_mapper.py
+.geminiignore
+
+# Graphify
+graphify-out/

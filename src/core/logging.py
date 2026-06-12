@@ -73,7 +73,7 @@ def setup_logging(
     Returns:
         Logger configurado
     """
-    logger = logging.getLogger("fiap_ml_app")
+    logger = logging.getLogger()
     logger.setLevel(level)
     logger.handlers.clear()
 
@@ -135,6 +135,7 @@ class APILoggingMiddleware(BaseHTTPMiddleware):
                 "request_id": request_id,
                 "method": method,
                 "path": path,
+                "query_params": query_params,
                 "client_host": client_host,
             },
         )
@@ -419,7 +420,7 @@ class LoggingContext:
         self.logger = logger
         self.operation_name = operation_name
         self.context_data = context_data
-        self.start_time = None
+        self.start_time: Optional[float] = None
 
     async def __aenter__(self):
         self.start_time = time.time()
@@ -429,7 +430,7 @@ class LoggingContext:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        duration_ms = (time.time() - self.start_time) * 1000
+        duration_ms = (time.time() - self.start_time) * 1000  # type: ignore
 
         if exc_type is None:
             self.logger.info(

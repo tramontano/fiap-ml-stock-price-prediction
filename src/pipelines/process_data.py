@@ -2,13 +2,17 @@ import os
 
 from sklearn.pipeline import Pipeline
 
-from src.infrastructure.storage_client import StorageClient
-from src.ml.transformers import (
+from src.infrastructure.storage_client import StorageClient  # pyrefly: ignore [missing-import]
+from src.core.config import settings  # pyrefly: ignore [missing-import]
+from src.core.logging import setup_logging  # pyrefly: ignore [missing-import]
+from src.ml.transformers import (  # pyrefly: ignore [missing-import]
     DailyReturnTransformer,
     EMATransformer,
     FeatureSelector,
     RSITransformer,
 )
+
+logger = setup_logging()
 
 
 def run_data_processing(ticker: str = "JNJ", parquet_name: str = "data.parquet"):
@@ -17,10 +21,10 @@ def run_data_processing(ticker: str = "JNJ", parquet_name: str = "data.parquet")
     # ==========================================
     # 1. CAMADA BRONZE -> CAMADA SILVER (Limpeza)
     # ==========================================
-    print(f"Carregando dados brutos da camada Bronze ({ticker})...")
+    logger.info(f"Carregando dados brutos da camada Bronze ({ticker})...")
     df_bronze = storage.load_parquet(bucket="bronze", file_path=parquet_name)
 
-    print("Limpando dados para a camada Silver...")
+    logger.info("Limpando dados para a camada Silver...")
     # Removemos linhas vazias e ordenamos pela data (crucial para séries temporais)
     # Nota: O yfinance pode retornar colunas como 'Close' ou 'Close_XYZ' dependendo da versão/ticker.
     # Procuramos a coluna que contém 'Close' e 'Date'
@@ -32,12 +36,12 @@ def run_data_processing(ticker: str = "JNJ", parquet_name: str = "data.parquet")
 
     # Salva na camada Silver
     storage.save_parquet(df_silver, bucket="silver", file_path=parquet_name)
-    print("Dados limpos salvos na camada Silver!")
+    logger.info("Dados limpos salvos na camada Silver!")
 
     # ==========================================
     # 2. CAMADA SILVER -> CAMADA GOLD (Features)
     # ==========================================
-    print("Gerando Features para a camada Gold...")
+    logger.info("Gerando Features para a camada Gold...")
 
     target_features = [
         "Date",  # Mantemos a data por agora para podermos indexar mais tarde
@@ -68,10 +72,10 @@ def run_data_processing(ticker: str = "JNJ", parquet_name: str = "data.parquet")
 
     # Salva na camada Gold
     storage.save_parquet(df_gold, bucket="gold", file_path=parquet_name)
-    print("Features finais salvas na camada Gold com sucesso!")
+    logger.info("Features finais salvas na camada Gold com sucesso!")
     return df_silver, df_gold
 
 
 if __name__ == "__main__":
-    TARGET_TICKER = os.getenv("TARGET_TICKER", "JNJ")
+    TARGET_TICKER = "JNJ"
     run_data_processing(TARGET_TICKER, "JNJ/19850102_20251230.parquet")

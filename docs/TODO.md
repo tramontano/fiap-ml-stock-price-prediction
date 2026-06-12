@@ -30,8 +30,8 @@
 
 - [x] Definir os schemas Pydantic de Request e Response (`src/domain/schemas.py`).
 - [x] Criar a rota POST `/predict` no FastAPI (`src/api/routes.py`).
-- [ ] Implementar a lógica de busca do modelo usando o alias champion via MLflow Client (garantindo a fonte única de verdade).
-- [ ] Implementar a lógica da API: baixar artefatos do MLflow, transformar dados de entrada, prever e converter o retorno de volta para preço nominal.
+- [x] Implementar a lógica de busca do modelo usando o alias champion via MLflow Client (garantindo a fonte única de verdade).
+- [x] Implementar a lógica da API: baixar artefatos do MLflow, transformar dados de entrada, prever e converter o retorno de volta para preço nominal.
 - [ ] Adicionar logging na API indicando qual versão (run_id) do modelo está servindo a predição.
 - [ ] Adicionar testes de integração para garantir que a API responde corretamente.
 - [ ] Criar `Dockerfile` focado em produção para a API.
@@ -40,11 +40,14 @@
 
 - [ ] Adicionar o Apache Airflow ao `docker-compose.yml`.
 - [ ] Criar a DAG do Airflow (`airflow/dags/retrain_dag.py`) para orquestrar ingestão e treino mensalmente.
-- [ ] Configurar rotina básica de CI/CD (GitHub Actions) para rodar o `pytest` a cada push.
-  - [ ] Rodar uv sync e pytest.
+- [x] Configurar rotina básica de CI/CD (GitHub Actions) para rodar o `pytest` a cada push.
+  - [x] Rodar uv sync e pytest.
   - [ ] Executar tune_pipeline.py (opcional/cron).
-  - [ ] Automatizar a marcação de tag Challenger no DagsHub após um treino bem-sucedido no branch main.
-- [ ] Adicionar script/comando Makefile promote para promover um modelo Challenger para Champion via CLI/API.
+  - [x] Automatizar a marcação de tag Challenger no DagsHub após um treino bem-sucedido no branch main.
+- [x] Adicionar script/comando Makefile promote para promover um modelo Challenger para Champion via CLI/API.
+- [ ] Integrar rota `/metrics` usando `prometheus-fastapi-instrumentator` na API FastAPI.
+- [ ] Configurar Prometheus, Grafana e cAdvisor no `docker-compose.yml` para monitoramento local de latência e recursos (CPU/RAM).
+- [ ] Configurar dashboard básico de latência da API e recursos de hardware no Grafana.
 
 ## 6. Documentação e Entrega
 

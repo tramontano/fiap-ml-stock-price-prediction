@@ -1,44 +1,43 @@
-import os
-
 import dagshub
 import mlflow
 import numpy as np
 import optuna
-from dotenv import load_dotenv
 from sklearn.metrics import (
     mean_absolute_error,
     mean_absolute_percentage_error,
     mean_squared_error,
 )
-from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
+
+from src.core.config import settings
+from src.core.logging import setup_logging
 
 # Importações da nossa Arquitetura
 from src.infrastructure.storage_client import StorageClient
 from src.ml.features import create_sequences
 from src.ml.model import build_lstm_model
 
-# Carrega as variáveis de ambiente (Credenciais do DagsHub e MinIO)
-load_dotenv(".env/mlflow.env")
+logger = setup_logging()
+
 
 # Inicializando dagshub
-dagshub.init(
-    repo_owner="tramontano", repo_name="fiap-ml-stock-price-prediction", mlflow=True
-)
-
-# Configuração do MLflow ligada ao DagsHub
-MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
-if MLFLOW_TRACKING_URI:
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+if settings.MLFLOW_TRACKING_URI:
+    MLFLOW_S3_IGNORE_TLS = True
+    MLFLOW_S3_ENDPOINT_URL = settings.S3_ENDPOINT_URL
+    mlflow.set_tracking_uri(settings.MLFLOW_TRACKING_URI)
     # Autenticação via variáveis de ambiente
-    os.environ["MLFLOW_TRACKING_USERNAME"] = os.getenv("MLFLOW_TRACKING_USERNAME", "")
-    os.environ["MLFLOW_TRACKING_PASSWORD"] = os.getenv("MLFLOW_TRACKING_PASSWORD", "")
+    dagshub.init(
+        repo_owner="tramontano",
+        repo_name="fiap-ml-stock-price-prediction",
+        mlflow=True,
+    )
+
+    mlflow.autolog()
 
 
-def load_and_prepare_data(
-    ticker: str = "JNJ", time_steps: int = 20, parquet_name: str = "data.parquet"
-):
+def load_and_prepare_data(time_steps: int = 20, parquet_name: str = "data.parquet"):
     """Carrega dados da camada GOLD e aplica o StandardScaler."""
-    print("Carregando dados da camada Gold...")
+    logger.info("Carregando dados da camada Gold...")
     storage = StorageClient()
     df_gold = storage.load_parquet(bucket="gold", file_path=parquet_name)
 
@@ -47,7 +46,7 @@ def load_and_prepare_data(
     features_array = df_gold.values
 
     # Criamos as janelas temporais PRIMEIRO
-    print("Criando as janelas temporais (Sliding Windows)...")
+    logger.info("Criando as janelas temporais (Sliding Windows)...")
     X, y = create_sequences(features_array, time_steps=time_steps)
 
     # Dividimos em Treino (80%) e Validação (20%) ANTES do Scaler
@@ -127,10 +126,10 @@ def objective(trial, X_train, y_train, X_val, y_val):
 
         # Monkey Patch: Injeta a versão no Keras para o MLflow não dar erro
         import tensorflow as tf
-        import tensorflow.keras as keras
+        import tensorflow.keras as keras  # type: ignore
 
         if not hasattr(keras, "__version__"):
-            keras.__version__ = tf.__version__
+            keras.__version__ = tf.__version__  # type: ignore
         # Guardar o modelo no MLflow se for o melhor até agora
         mlflow.keras.log_model(model, "lstm_model")
         mlflow.sklearn.log_model(fitted_pipeline, "feature_pipeline")
@@ -139,11 +138,11 @@ def objective(trial, X_train, y_train, X_val, y_val):
 
 
 if __name__ == "__main__":
-    print("Iniciando o pipeline de Tuning...")
+    logger.info("Iniciando o pipeline de Tuning...")
 
     # 1. Preparação dos dados
     X_train, y_train, X_val, y_val, fitted_pipeline = load_and_prepare_data(
-        ticker="JNJ", time_steps=20, parquet_name="JNJ/19850102_20251230.parquet"
+        time_steps=20, parquet_name="JNJ/19850102_20251230.parquet"
     )
 
     # 2. Configura a experiência principal no MLflow
@@ -155,15 +154,20 @@ if __name__ == "__main__":
         study = optuna.create_study(direction="minimize", study_name="lstm_tuning")
 
         # Executa N tentativas (trials)
-        print("Iniciando o Optuna (10 tentativas). Pode demorar alguns minutos...")
+        logger.info(
+            "Iniciando o Optuna (10 tentativas). Pode demorar alguns minutos..."
+        )
         study.optimize(
             lambda trial: objective(trial, X_train, y_train, X_val, y_val), n_trials=5
         )
 
-        print("\nOtimização concluída!")
-        print(f"Melhores hiperparâmetros encontrados: {study.best_params}")
-        print(f"Menor RMSE atingido: {study.best_value}")
+        logger.info("\nOtimização concluída!")
+        logger.info(f"Melhores hiperparâmetros encontrados: {study.best_params}")
+        logger.info(f"Menor RMSE atingido: {study.best_value}")
 
+        # Regista os melhores parâmetros na run pai
+        mlflow.log_params({"best_" + k: v for k, v in study.best_params.items()})
+        mlflow.log_metric("best_rmse", study.best_value)
         # Regista os melhores parâmetros na run pai
         mlflow.log_params({"best_" + k: v for k, v in study.best_params.items()})
         mlflow.log_metric("best_rmse", study.best_value)
