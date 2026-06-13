@@ -5,16 +5,18 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# Lê a versão do pyproject.toml globalmente para evitar que variáveis temporárias (como arquivos abertos) sejam capturadas pela classe Settings
+_pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+with _pyproject_path.open("rb") as _f:
+    _pyproject_data = tomllib.load(_f)
+
 class Settings(BaseSettings):
     # ==========================================
     # Configurações Globais da Aplicação
     # ==========================================
-    # Lê a versão do pyproject.toml — fonte única de verdade
-    _pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
-    with _pyproject_path.open("rb") as _f:
-        PROJECT_NAME: str = tomllib.load(_f)["project"]["name"]
-        PROJECT_VERSION: str = tomllib.load(_f)["project"]["version"]
-        PROJECT_DESCRIPTION: str = tomllib.load(_f)["project"]["description"]
+    PROJECT_NAME: str = _pyproject_data["project"]["name"]
+    PROJECT_VERSION: str = _pyproject_data["project"]["version"]
+    PROJECT_DESCRIPTION: str = _pyproject_data["project"]["description"]
     ENVIRONMENT: Literal["local", "staging", "production"] = "local"
     API_V1_STR: str = "/api/v1"
     ALLOWED_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:8000"]

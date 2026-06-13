@@ -1,4 +1,4 @@
-# Título: 0009 - Estratégia de Cálculo do Score de Confiança na Inferência (Monte Carlo Dropout e Tolerância Máxima).
+# 0009. Estratégia de Cálculo do Score de Confiança na Inferência (Monte Carlo Dropout e Tolerância Máxima).
 
 **Status**: Aceito
 **Data**: 2026-06-11

@@ -3,7 +3,6 @@
 
 ## 1. Visão do Produto
 
-> [!NOTE]
 > **Resumo Executivo**
 > O **Stock Price Prediction** é uma solução completa (*end-to-end*) de Machine Learning, desenhada sobre os pilares de MLOps e *Clean Architecture*. O sistema treina, otimiza e serve um modelo de rede neural profunda do tipo Long Short-Term Memory (LSTM) para prever o preço de fechamento de ativos financeiros da bolsa de valores (com caso de uso inicial na ação Johnson & Johnson - JNJ). A plataforma se diferencia por resolver ativamente o problema do *Training-Serving Skew*, recalculando as *features* em tempo real durante a inferência.
 

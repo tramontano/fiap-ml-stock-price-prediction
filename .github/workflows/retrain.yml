@@ -1,0 +1,51 @@
+name: Retreino do Modelo LSTM (Cron)
+
+on:
+  schedule:
+    # Executa todos os domingos à meia-noite (UTC)
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    # Permite execução a partir da interface do GitHub
+
+jobs:
+  retrain:
+    name: Pipeline de Dados e Otimização
+    runs-on: ubuntu-latest
+
+    env:
+      ENVIRONMENT: production
+      AWS_DEFAULT_REGION: us-east-1
+      # Segredos configurados no repositório GitHub (Settings -> Secrets and variables -> Actions)
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+      MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+      MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+
+    steps:
+      - name: Fazer o Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Instalar e Configurar o `uv`
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Configurar Python 3.11
+        run: uv python install 3.11
+
+      - name: Instalar Dependências
+        run: uv sync --frozen
+
+      - name: Passo 1 - Ingestão de Dados (yfinance -> S3 Bronze/Silver)
+        run: uv run python -m src.pipelines.ingest_data
+
+      - name: Passo 2 - Processamento e Feature Engineering (S3 Silver -> S3 Gold)
+        run: uv run python -m src.pipelines.process_data
+
+      - name: Passo 3 - Treino e Otimização Bayesiana (Optuna -> MLflow)
+        run: uv run python -m src.pipelines.tune_pipeline
+
+      - name: Passo 4 - Promoção do Modelo Champion (MLflow -> S3 Models)
+        run: uv run python -m src.pipelines.promote_model

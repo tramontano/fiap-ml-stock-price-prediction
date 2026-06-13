@@ -120,8 +120,25 @@ services:
         condition: service_healthy
     command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
+  # ---------------------------------------------------------
+  # LocalStack: Emulador da AWS para testes locais do Terraform
+  # ---------------------------------------------------------
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack
+    ports:
+      - "127.0.0.1:4566:4566"            # Porta principal da API AWS
+      - "127.0.0.1:4510-4559:4510-4559"
+    environment:
+      - SERVICES=s3,ecr,ecs,iam,ec2,elb
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - localstack_data:/var/lib/localstack
+
 volumes:
   minio_data:
   postgres_data:
   prometheus_data:
   grafana_data:
+  localstack_data:
