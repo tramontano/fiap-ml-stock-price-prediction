@@ -1,5 +1,7 @@
 name: Fase4
 
+version: "3"
+
 services:
   # ---------------------------------------------------------
   # MinIO: O nosso Data Lake local (Substitui o AWS S3)
@@ -10,8 +12,9 @@ services:
     ports:
       - "9000:9000" # Porta da API (usada pelo boto3/Python)
       - "9001:9001" # Porta da Interface Gráfica (Web UI)
-    env_file: ".env/minio.env"
+    env_file: ".env"
     command: server /data --console-address ":9001"
+    #network_mode: bridge
     volumes:
       - minio_data:/data
     healthcheck:
@@ -29,7 +32,8 @@ services:
     depends_on:
       minio:
         condition: service_healthy # Só roda quando o MinIO estiver 100% pronto
-    env_file: ".env/minio.env"
+    env_file: ".env"
+    #network_mode: bridge
     entrypoint: >
       /bin/sh -c "
       echo 'Configurando o alias do MinIO...';
@@ -52,7 +56,8 @@ services:
     container_name: postgres
     ports:
       - "5432:5432"
-    env_file: ".env/postgres.env"
+    env_file: ".env"
+    #network_mode: bridge
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -68,6 +73,7 @@ services:
     container_name: mlops_prometheus
     ports:
       - "9090:9090"
+    #network_mode: bridge
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -87,6 +93,7 @@ services:
       - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
       - GF_AUTH_ANONYMOUS_ENABLED=${GF_AUTH_ANONYMOUS_ENABLED}
+    #network_mode: bridge
     volumes:
       - grafana_data:/var/lib/grafana
       # Provisionamento automático de Dashboards e Data Sources
@@ -94,16 +101,28 @@ services:
     depends_on:
       - prometheus
 
+  optuna-dashboard:
+    image: ghcr.io/optuna/optuna-dashboard:latest
+    container_name: optuna-dashboard
+    ports:
+      - "8080:8080"
+    env_file: ".env"
+    depends_on:
+      - postgres
+    command:
+      - "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+
   # ---------------------------------------------------------
   # FastAPI: Aplicação de Inferência e API
   # ---------------------------------------------------------
   web:
-    build: 
+    build:
       context: .
-      dockerfile: deploy/docker/Dockerfile.api
+      dockerfile: deploy/docker/Dockerfile
     container_name: web
     ports:
       - "8000:8000"
+    env_file: ".env"
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
@@ -112,13 +131,27 @@ services:
       - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
       - MLFLOW_TRACKING_USERNAME=${MLFLOW_TRACKING_USERNAME}
       - MLFLOW_TRACKING_PASSWORD=${MLFLOW_TRACKING_PASSWORD}
+    #network_mode: bridge
     volumes:
       # Mapeia o código fonte para hot-reload no ambiente local
-      - ./src:/app/src:ro 
+      - ./src:/app/src:ro
     depends_on:
       minio:
         condition: service_healthy
     command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    develop:
+      watch:
+        # Sincroniza o diretório de trabalho com o diretório `/src` no container
+        - action: sync
+          path: ./src
+          target: /app/src
+          # Exclui o ambiente virtual do projeto
+          ignore:
+            - .venv/
+
+        # Rebuild the image on changes to the `pyproject.toml`
+        - action: rebuild
+          path: ./pyproject.toml
 
   # ---------------------------------------------------------
   # LocalStack: Emulador da AWS para testes locais do Terraform
@@ -130,8 +163,10 @@ services:
       - "127.0.0.1:4566:4566"            # Porta principal da API AWS
       - "127.0.0.1:4510-4559:4510-4559"
     environment:
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
       - SERVICES=s3,ecr,ecs,iam,ec2,elb
       - DOCKER_HOST=unix:///var/run/docker.sock
+    #network_mode: bridge
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
       - localstack_data:/var/lib/localstack

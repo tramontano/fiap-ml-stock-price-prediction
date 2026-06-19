@@ -1,5 +1,5 @@
 # O .PHONY garante que o comando rode mesmo que exista um ficheiro com o mesmo nome na pasta
-.PHONY: install format test run train promote clean up down
+.PHONY: install format test run train promote clean start stop
 
 install:
 	@echo "Instalando e sincronizando dependências com o uv..."
@@ -37,10 +37,10 @@ clean:
 	find . -type d -name ".ruff_cache" -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
-up:
+start:
 	@echo "Iniciando a infraestrutura local (MinIO, PostgreSQL, etc.)..."
 	docker-compose up -d
 
-down:
+stop:
 	@echo "Parando e destruindo a infraestrutura local..."
 	docker-compose down

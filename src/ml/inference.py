@@ -3,87 +3,15 @@ Carrega um modelo LSTM treinado + scaler ajustado a partir do MLflow e executa
 previsões em novos dados da camada Gold (Ouro) buscados no Data Lake.
 """
 
-import pickle
-from typing import Optional
-
-import dagshub
-import mlflow
 import numpy as np
 
-from src.core.config import settings
 from src.core.logging import setup_logging
+from src.infrastructure.registry import RegistryClient
 from src.ml.features import create_sequences
 from src.pipelines.ingest_data import run_ingestion
 from src.pipelines.process_data import run_data_processing
-from src.pipelines.promote_model import promote_model
 
 logger = setup_logging()
-
-
-# Artifact loader
-def load_artifacts(
-    run_id: Optional[str] = None, model_path: Optional[str] = None
-) -> tuple:
-    """
-    Busca o modelo Keras e o scaler sklearn (ferramenta de padronização de escala)
-    que foram salvos durante uma execução (run) específica do MLflow.
-
-    Args:
-        run_id: ID opcional da run no MLflow. Se for None, tenta encontrar o modelo Campeão de Produção.
-
-    Returns:
-        (model, scaler) — prontos para uso, nenhuma etapa de ajuste (fit) é necessária.
-    """
-    # Monkey Patch: Injeta a versão no Keras para o MLflow não dar erro
-    import tensorflow as tf
-    import tensorflow.keras as keras
-
-    if not hasattr(keras, "__version__"):
-        keras.__version__ = tf.__version__  # type: ignore
-
-    # Configura a conexão ao MLflow
-    mlflow.set_tracking_uri(settings.MLFLOW_TRACKING_URI)
-    dagshub.init(
-        repo_owner="tramontano", repo_name="fiap-ml-stock-price-prediction", mlflow=True
-    )
-    client = mlflow.tracking.MlflowClient()
-    model_name = "stock-price-lstm"
-    if not run_id and not model_path:
-        # Busca a run ativa com a tag stage="Production" (Champion)
-        experiment = client.get_experiment_by_name(model_name)
-        if experiment:
-            runs = client.search_runs(
-                experiment_ids=[experiment.experiment_id],
-                filter_string="tags.stage = 'Production'",
-            )
-            if runs:
-                run_id = runs[0].info.run_id
-                logger.info(
-                    f"Carregando modelo Champion (Production) a partir da Run: {run_id}"
-                )
-
-        if not run_id:
-            logger.error("Nenhum modelo Champion disponível.")
-            raise ValueError("Nenhum modelo Champion disponível.")
-
-        logger.info(f"Baixando artefatos da Run: {run_id}")
-
-        scaler = mlflow.sklearn.load_model(f"runs:/{run_id}/feature_pipeline")
-        model = mlflow.keras.load_model(f"runs:/{run_id}/lstm_model")
-    elif model_path:
-        logger.info(f"Carregando artefatos na memória: {model_path}")
-        model_name = "lstm_model.keras"
-        scaler_name = "feature_pipeline.pkl"
-        model = tf.keras.models.load_model(f"{model_path}/{model_name}")
-        scaler = pickle.load(open(f"{model_path}/{scaler_name}", "rb"))
-        if not run_id:
-            run_id = promote_model()
-    else:
-        logger.info(f"Carregando artefatos do MLflow: {run_id}")
-        scaler = mlflow.sklearn.load_model(f"runs:/{run_id}/feature_pipeline")
-        model = mlflow.keras.load_model(f"runs:/{run_id}/lstm_model")
-
-    return model, scaler, run_id
 
 
 # Função para calcular confiança
@@ -94,7 +22,8 @@ def confidence(X, num_runs: int = 10, model=None) -> tuple:
     """
     # 1. Carrega os artefatos do MLflow apenas se não tiverem sido injetados via parâmetros
     if model is None:
-        model = load_artifacts()[0]
+        client = RegistryClient()
+        model, scaler, run_id = client.load_model()
 
     # 2. Executa 10 vezes para gerar um percentual de confiança
     predictions = []
@@ -158,7 +87,8 @@ def predict(
 
     # 2. Carrega os artefatos do MLflow apenas se não tiverem sido injetados via parâmetros
     if model is None or scaler is None or run_id is None:
-        model, scaler, run_id = load_artifacts()
+        client = RegistryClient()
+        model, scaler, run_id = client.load_model()
 
     # 3. Preparação da Camada Gold — contém apenas features processadas (sem a coluna de preço absoluto Close)
     #    Colunas esperadas: [Return_Close, RSI_15, Dist_EMA_5, Dist_EMA_10, Dist_EMA_15]
@@ -224,23 +154,16 @@ def predict(
 
 
 # Teste rápido via linha de comando (Smoke-test)
-if __name__ == "__main__":
-    model_name = "lstm_model.keras"
-    scaler_name = "feature_pipeline.pkl"
-    local_path = "models/" + settings.ENVIRONMENT
-    run_id = "05b0314cdec24e23be97217429826bb5"
-    model, pipeline, run_id = load_artifacts(
-        model_path=local_path,
-        # run_id=run_id,
-    )
-    logger.info(f"model:{model},\npipeline:{pipeline},\nrun_id:{run_id}")
-    # Roda a inferência para a ação JNJ (Johnson & Johnson) com janela de 20 dias
-    result = predict(
-        ticker="JNJ", time_steps=20, model=model, scaler=pipeline, run_id=run_id
-    )
-    # Exibe os resultados
-    for key in result.keys():
-        if key != "model_id":
-            logger.info(f"{key}: {result[key][-1]}")
-        else:
-            logger.info(f"model_id: {result[key]}")
+# if __name__ == "__main__":
+#     from src.infrastructure.registry import RegistryClient
+#
+#     client = RegistryClient()
+#     model, scaler, run_id = client.load_model()
+#     result = predict(
+#         ticker="JNJ", time_steps=20, model=model, scaler=scaler, run_id=run_id
+#     )  # Infere a ação JNJ com janela de 20 dias
+#     for key in result.keys():  # Exibe os resultados
+#         if key != "model_id":
+#             logger.info(f"{key}: {result[key][-1]}")
+#         else:
+#             logger.info(f"model_id: {result[key]}")

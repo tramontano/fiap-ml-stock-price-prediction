@@ -1,14 +1,14 @@
-from typing import Optional, Literal, Union
 import tomllib
 from pathlib import Path
+from typing import Literal, Optional, Union
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 # Lê a versão do pyproject.toml globalmente para evitar que variáveis temporárias (como arquivos abertos) sejam capturadas pela classe Settings
 _pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
 with _pyproject_path.open("rb") as _f:
     _pyproject_data = tomllib.load(_f)
+
 
 class Settings(BaseSettings):
     # ==========================================
@@ -35,11 +35,16 @@ class Settings(BaseSettings):
     MINIO_ROOT_PASSWORD: Optional[str] = None
 
     # ==========================================
-    # Model Registry & Tracking (DagsHub / MLflow)
+    # Model Registry & Tracking (DagsHub / MLflow / OPTUNA)
     # ==========================================
     MLFLOW_TRACKING_URI: Union[str, None] = None
     MLFLOW_TRACKING_USERNAME: Optional[str] = None
     MLFLOW_TRACKING_PASSWORD: Optional[str] = None
+    MLFLOW_EXPERIMENT_NAME: Optional[str] = None
+    DAGSHUB_REPO_NAME: Optional[str] = None
+    DAGSHUB_APP_TOKEN: Optional[str] = None
+    OPTUNA_STORAGE_URI: Optional[str] = None
+    MODEL_STAGE: Literal["champion", "challenger"] = "champion"
 
     # Configuração do Pydantic para ler do arquivo .env quando rodar localmente
     model_config = SettingsConfigDict(

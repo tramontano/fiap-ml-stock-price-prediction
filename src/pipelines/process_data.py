@@ -1,10 +1,9 @@
-import os
-
 from sklearn.pipeline import Pipeline
 
-from src.infrastructure.storage_client import StorageClient  # pyrefly: ignore [missing-import]
-from src.core.config import settings  # pyrefly: ignore [missing-import]
 from src.core.logging import setup_logging  # pyrefly: ignore [missing-import]
+from src.infrastructure.storage_client import (
+    StorageClient,  # pyrefly: ignore [missing-import]
+)
 from src.ml.transformers import (  # pyrefly: ignore [missing-import]
     DailyReturnTransformer,
     EMATransformer,

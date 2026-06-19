@@ -23,8 +23,18 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Copia o binario do uv diretamente da imagem oficial (sem curl/pip)
-COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /usr/local/bin/
+# O instalador requer curl (e certificados) para baixar o arquivo de release
+# Atualiza a lista de pacotes e instala as dependências necessárias
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
+
+# Baixa o instalador mais recente
+ADD https://astral.sh/uv/0.11.21/install.sh /uv-installer.sh
+
+# Instala e remove o instalador
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+
+# Coloca o instalador na variavel PATH
+ENV PATH="/root/.local/bin/:$PATH"
 
 WORKDIR /app
 
@@ -32,10 +42,13 @@ WORKDIR /app
 #    Se apenas src/ mudar, esta layer de install NAO sera invalidada.
 COPY pyproject.toml uv.lock ./
 
+ENV UV_NO_DEV=1
+
 # 2. Instala dependencias de producao (sem grupo [dev]) sem o pacote local.
 #    --frozen:             usa o uv.lock sem resolver novamente
 #    --no-dev:             exclui ipykernel, optuna, pytest, ruff, etc.
 #    --no-install-project: nao instala o pacote local ainda (codigo ausente)
+
 RUN uv sync \
         --frozen \
         --no-dev \
