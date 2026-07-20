@@ -23,5 +23,5 @@ def test_create_sequences():
 def test_build_feature_pipeline():
     pipeline = build_feature_pipeline()
     assert isinstance(pipeline, Pipeline)
-    # Verificar se o último passo é o scaler
-    assert pipeline.steps[-1][0] == "scaler"
+    # Verificar se o último passo é o selector (o scaler é aplicado posteriormente)
+    assert pipeline.steps[-1][0] == "selector"

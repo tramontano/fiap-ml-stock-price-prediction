@@ -108,3 +108,91 @@ class PromoteModelResponse(BaseModel):
         default=None,
         description="run_id do novo Challenger, selecionado automaticamente entre os runs remanescentes após a promoção.",
     )
+
+
+# =============================================================================
+# Schemas de Pipeline (Celery Director Workflows)
+# =============================================================================
+
+
+class IngestRequest(BaseModel):
+    """Payload para disparar o workflow de ingestão de dados."""
+
+    ticker: str = Field(default="JNJ", description="Símbolo da ação (ex: JNJ, AAPL)")
+    start_date: str = Field(
+        default="1985-01-01", description="Data de início (YYYY-MM-DD)"
+    )
+    end_date: str = Field(
+        default="2025-12-31", description="Data de fim (YYYY-MM-DD)"
+    )
+
+
+class ProcessRequest(BaseModel):
+    """Payload para disparar o workflow de processamento de dados."""
+
+    ticker: str = Field(default="JNJ", description="Símbolo da ação (ex: JNJ)")
+    parquet_name: str = Field(
+        default="JNJ/19850102_20251230.parquet",
+        description="Caminho do ficheiro Parquet no bucket Bronze.",
+    )
+
+
+class TrainRequest(BaseModel):
+    """Payload para disparar o workflow de treino do modelo."""
+
+    params: dict | None = Field(
+        default=None,
+        description="Hiperparâmetros customizados. Se omitido, usa os do Champion.",
+    )
+
+
+class FullPipelineRequest(BaseModel):
+    """Payload para disparar o pipeline completo (Ingest → Process → Train)."""
+
+    ticker: str = Field(default="JNJ", description="Símbolo da ação (ex: JNJ, AAPL)")
+    start_date: str = Field(
+        default="1985-01-01", description="Data de início (YYYY-MM-DD)"
+    )
+    end_date: str = Field(
+        default="2025-12-31", description="Data de fim (YYYY-MM-DD)"
+    )
+    params: dict | None = Field(
+        default=None,
+        description="Hiperparâmetros customizados para o treino. Se omitido, usa os do Champion.",
+    )
+
+
+class WorkflowTriggerResponse(BaseModel):
+    """Resposta ao disparar um workflow via Director."""
+
+    workflow_id: str = Field(
+        ..., description="ID único do workflow criado no Director."
+    )
+    project: str = Field(
+        ..., description="Nome do projeto no Director (ex: 'ml')."
+    )
+    name: str = Field(
+        ..., description="Nome do workflow (ex: 'FULL_PIPELINE')."
+    )
+    status: str = Field(
+        ..., description="Estado inicial do workflow (ex: 'pending')."
+    )
+
+
+class TaskStatusDetail(BaseModel):
+    """Detalhe do estado de uma task dentro de um workflow."""
+
+    name: str = Field(..., description="Nome da task (ex: 'INGEST_DATA').")
+    status: str = Field(
+        ..., description="Estado da task (pending, progress, success, error)."
+    )
+
+
+class WorkflowStatusResponse(BaseModel):
+    """Resposta com o estado completo de um workflow."""
+
+    workflow_id: str = Field(..., description="ID único do workflow.")
+    status: str = Field(..., description="Estado geral do workflow.")
+    tasks: list[TaskStatusDetail] = Field(
+        default_factory=list, description="Lista de tasks com seus estados."
+    )

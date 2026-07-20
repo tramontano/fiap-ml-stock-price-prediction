@@ -17,7 +17,9 @@ def test_load_and_prepare_data_structure(mock_storage_class):
     mock_storage_instance.load_parquet.return_value = df
 
     time_steps = 10
-    X_train, y_train, X_val, y_val, scaler = load_and_prepare_data(ticker="JNJ", time_steps=time_steps)
+    X_train, y_train, X_val, y_val, scaler = load_and_prepare_data(
+        time_steps=time_steps, parquet_name="JNJ.parquet"
+    )
 
     # Total de janelas possíveis = 100 - 10 = 90
     # Split de 80% = 72 treino, 18 validação

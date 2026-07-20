@@ -116,12 +116,10 @@ services:
   # FastAPI: Aplicação de Inferência e API
   # ---------------------------------------------------------
   web:
-    build:
-      context: .
-      dockerfile: deploy/docker/Dockerfile
+    image: localhost/web:latest
     container_name: web
     ports:
-      - "8000:8000"
+      - "8001:8001"
     env_file: ".env"
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
@@ -131,6 +129,7 @@ services:
       - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
       - MLFLOW_TRACKING_USERNAME=${MLFLOW_TRACKING_USERNAME}
       - MLFLOW_TRACKING_PASSWORD=${MLFLOW_TRACKING_PASSWORD}
+      - PORT=8001
     #network_mode: bridge
     volumes:
       # Mapeia o código fonte para hot-reload no ambiente local
@@ -138,7 +137,7 @@ services:
     depends_on:
       minio:
         condition: service_healthy
-    command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8001"]
     develop:
       watch:
         # Sincroniza o diretório de trabalho com o diretório `/src` no container
@@ -152,6 +151,77 @@ services:
         # Rebuild the image on changes to the `pyproject.toml`
         - action: rebuild
           path: ./pyproject.toml
+
+  # ---------------------------------------------------------
+  # Apache Airflow: Orquestração de Workflows
+  # ---------------------------------------------------------
+  airflow-init:
+    image: apache/airflow:2.9.2-python3.11
+    container_name: airflow_init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    entrypoint: >
+      /bin/bash -c "
+      airflow db migrate &&
+      airflow users create --role Admin --username admin --email admin --firstname admin --lastname admin --password admin || true
+      "
+
+  airflow-webserver:
+    image: apache/airflow:2.9.2-python3.11
+    container_name: airflow_webserver
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - PYTHONPATH=/opt/airflow/src
+      - ENVIRONMENT=${ENVIRONMENT}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+      - MLFLOW_TRACKING_USERNAME=${MLFLOW_TRACKING_USERNAME}
+      - MLFLOW_TRACKING_PASSWORD=${MLFLOW_TRACKING_PASSWORD}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+    command: webserver
+
+  airflow-scheduler:
+    image: apache/airflow:2.9.2-python3.11
+    container_name: airflow_scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - PYTHONPATH=/opt/airflow/src
+      - ENVIRONMENT=${ENVIRONMENT}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+      - MLFLOW_TRACKING_USERNAME=${MLFLOW_TRACKING_USERNAME}
+      - MLFLOW_TRACKING_PASSWORD=${MLFLOW_TRACKING_PASSWORD}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+    command: scheduler
+
 
   # ---------------------------------------------------------
   # LocalStack: Emulador da AWS para testes locais do Terraform

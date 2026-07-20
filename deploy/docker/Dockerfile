@@ -56,10 +56,13 @@ RUN uv sync \
 
 # 3. Copia o codigo e instala o pacote local (deps ja estao em cache)
 COPY src/ ./src/
+COPY tasks/ ./tasks/
+COPY workflows.yml ./
 
 RUN uv sync \
         --frozen \
         --no-dev
+
 
 
 # -----------------------------------------------------------------------------
@@ -85,6 +88,8 @@ WORKDIR /app
 # Copia a venv ja resolvida e o codigo do stage builder
 COPY --from=builder --chown=appuser:appgroup /app/.venv  ./.venv
 COPY --from=builder --chown=appuser:appgroup /app/src    ./src
+COPY --from=builder --chown=appuser:appgroup /app/tasks  ./tasks
+COPY --from=builder --chown=appuser:appgroup /app/workflows.yml  ./workflows.yml
 COPY --chown=appuser:appgroup pyproject.toml ./
 
 # Cria o diretorio de artefatos que o lifespan vai popular no boot
@@ -92,7 +97,7 @@ RUN mkdir -p models && chown appuser:appgroup models
 
 USER appuser
 
-EXPOSE 8000
+EXPOSE 8000 8001
 
 # Health check nativo do Docker — usa o readiness probe da propria API.
 # start-period=60s: da tempo ao lifespan de baixar os artefatos do MinIO/S3.
@@ -101,8 +106,8 @@ HEALTHCHECK --interval=30s \
             --start-period=60s \
             --retries=3 \
     CMD python -c \
-        "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')" \
+        "import os, urllib.request; port = os.getenv('PORT', '8001'); urllib.request.urlopen(f'http://localhost:{port}/api/v1/health')" \
         || exit 1
 
 # Ponto de entrada: uvicorn sem --reload (controlado pela variavel ENVIRONMENT no lifespan)
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8001"]

@@ -798,6 +798,19 @@ class RegistryClient:
             logger.error("Erro ao obter métricas da run %s: %s", run_id, e)
             return None
 
+    def get_run_params(self, run_id: str) -> dict[str, float] | None:
+        """Retorna os parametros de uma run."""
+        try:
+            run = self.client.get_run(run_id)
+            params = run.data.to_dictionary()["params"]
+            if not params:
+                logger.warning("Parametros da run com ID %s não encontrados.", run_id)
+                return None
+            return params
+        except Exception as e:
+            logger.error("Erro ao obter parametros da run %s: %s", run_id, e)
+            return None
+
     def get_model_creation_date(self, run_id: str) -> str | None:
         """Retorna a data de criação do modelo."""
         try:

@@ -233,3 +233,10 @@ dependency_mapper.py
 
 # Graphify
 graphify-out/
+
+# Antigravity
+.antigravityignore
+
+# Gemini AI
+.gemini
+.agents

@@ -24,18 +24,15 @@ train:
 
 promote:
 	@echo "Executando o script de promoção de modelos Challenger/Champion baseados em RMSE..."
-	uv run python src.pipelines.promote_model
+	uv run python -m src.pipelines.promote_model
 
 inference:
 	@echo "Executando o script de inferência..."
-	uv run python src.ml.inference
+	uv run python -m src.ml.inference
 
 clean:
 	@echo "Limpando ficheiros temporários, cache e artefatos de Python..."
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type d -name ".pytest_cache" -exec rm -rf {} +
-	find . -type d -name ".ruff_cache" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
+	uv run python -c "import shutil, pathlib; [shutil.rmtree(p) for p in pathlib.Path('.').rglob('__pycache__') if p.is_dir()]; [shutil.rmtree(p) for p in pathlib.Path('.').rglob('.pytest_cache') if p.is_dir()]; [shutil.rmtree(p) for p in pathlib.Path('.').rglob('.ruff_cache') if p.is_dir()]; [p.unlink() for p in pathlib.Path('.').rglob('*.pyc') if p.is_file()]"
 
 start:
 	@echo "Iniciando a infraestrutura local (MinIO, PostgreSQL, etc.)..."

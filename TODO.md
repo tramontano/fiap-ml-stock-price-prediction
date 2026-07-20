@@ -12,13 +12,14 @@
 * [x] **Documentação Arquitetural:** Escrever ADRs críticas:
   * ADR 0009: Estratégia de Cálculo do Score de Confiança na Inferência (Monte Carlo Dropout e Tolerância Máxima).
   * ADR 0010: Escolha de Orquestração e Background Tasks (GitHub Actions vs Celery vs Airflow).
-* [ ] **Qualidade de Código:** Adicionar testes de integração (Pytest) na pasta `tests/integration/` para garantir a resposta correta da API FastAPI simulando dependências reais.
+* [x] **Qualidade de Código:** Adicionar testes de integração (Pytest) na pasta `tests/integration/` para garantir a resposta correta da API FastAPI simulando dependências reais.
 
 ---
 
 ## 🏁 Entrega Final (Tech Challenge)
 
 * [ ] **Documentação:** Preencher o `README.md` raiz com instruções claras de execução, arquitetura geral e atalhos de execução (`Makefile`).
+* [x] **Documentação:** Criar `README.md` em todas as pastas da raiz do projeto (deploy, docs, monitoring, notebooks, tasks, tests) conforme as regras do GEMINI.md.
 * [ ] **Apresentação:** Gravar o vídeo demonstrando a arquitetura, requisições na API, visualização de logs/métricas e pipeline de orquestração.
 
 ---

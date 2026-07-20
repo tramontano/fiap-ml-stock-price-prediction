@@ -10,8 +10,8 @@ from src.core.config import settings
 
 @pytest.fixture
 def mock_artifacts():
-    """Mocka a transferência do S3 e carregamento do modelo no arranque (lifespan)."""
-    with patch("src.api.main._download_and_load_artifacts") as mock:
+    """Mocka o carregamento do modelo no arranque (lifespan)."""
+    with patch("src.infrastructure.registry.RegistryClient.load_model") as mock:
         # Retorna a tupla (model, pipeline, run_id)
         mock.return_value = (MagicMock(), MagicMock(), "test-run-123")
         yield mock

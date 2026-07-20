@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     OPTUNA_STORAGE_URI: Optional[str] = None
     MODEL_STAGE: Literal["champion", "challenger"] = "champion"
 
+
+
+
     # Configuração do Pydantic para ler do arquivo .env quando rodar localmente
     model_config = SettingsConfigDict(
         env_file=".env",
