@@ -1,9 +1,6 @@
 name: Retreino do Modelo LSTM (Cron)
 
 on:
-  schedule:
-    # Executa todos os domingos à meia-noite (UTC)
-    - cron: '0 0 * * 0'
   workflow_dispatch:
     # Permite execução a partir da interface do GitHub
 

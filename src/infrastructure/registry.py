@@ -763,22 +763,22 @@ class RegistryClient:
                 f"{prefix}{self.SCALER_FILENAME}",
             )
 
-        if not os.path.isfile(
-            f"{local_path}/{self.MODEL_FILENAME}"
-        ) or not os.path.isfile(f"{local_path}/{self.SCALER_FILENAME}"):
+        if not os.path.isfile(f"{local_path}{self.MODEL_FILENAME}") or \
+         not os.path.isfile(f"{local_path}{self.SCALER_FILENAME}"):
+            os.makedirs(local_path, exist_ok=True)
             self.storage.download(
-                f"{local_path}/{self.MODEL_FILENAME}",
                 self.MODELS_BUCKET,
-                self.MODEL_FILENAME,
+                self.MODELS_BUCKET,
+                f"{prefix}{self.MODEL_FILENAME}",
             )
             self.storage.download(
-                f"{local_path}/{self.SCALER_FILENAME}",
                 self.MODELS_BUCKET,
-                self.SCALER_FILENAME,
+                self.MODELS_BUCKET,
+                f"{prefix}{self.SCALER_FILENAME}",
             )
 
-        scaler = pickle.load(open(f"{local_path}/{self.SCALER_FILENAME}", "rb"))
-        model = tf.keras.models.load_model(f"{local_path}/{self.MODEL_FILENAME}")
+        scaler = pickle.load(open(f"{local_path}{self.SCALER_FILENAME}", "rb"))
+        model = tf.keras.models.load_model(f"{local_path}{self.MODEL_FILENAME}")
 
         logger.info(
             "Modelo carregado para serving: estágio=%s, run_id=%s.", stage, run_id
@@ -826,16 +826,16 @@ class RegistryClient:
 
 
 # Teste rápido via linha de comando (Smoke-test)
-# if __name__ == "__main__":
-#    #client = RegistryClient()
-#    #challenger_id = client.get_challenger_run_id()
-#    #print(f"Challenger ID: {challenger_id}")
-#    #champion_id = client.get_champion_run_id()
-#    #print(f"Champion ID: {champion_id}")
+if __name__ == "__main__":
+    client = RegistryClient()
+    challenger_id = client.get_challenger_run_id()
+    print(f"Challenger ID: {challenger_id}")
+    champion_id = client.get_champion_run_id()
+    print(f"Champion ID: {champion_id}")
 #    # client.tag_challenger() #1 Tag um modelo para challenger
 #    # client.promote_to_champion() #2 Promove o challenger para champion
 #    # client.sync_stage_to_s3("Champion") #3 Sincroniza o champion para o S3
-#    # model, scaler, run_id = client.load_model() #4 Carrega o modelo champion
-#    # print(f"Modelo carregado: {model}")
-#    # print(f"Scaler carregado: {scaler}")
-#    # print(f"Run ID: {run_id}")
+    model, scaler, run_id = client.load_model() # Carrega o modelo champion
+    print(f"Modelo carregado: {model}")
+    print(f"Scaler carregado: {scaler}")
+    print(f"Run ID: {run_id}")

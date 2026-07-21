@@ -15,7 +15,7 @@ O diretório `src/` está organizado de forma modular, garantindo a separação 
 | `api/` | Camada de apresentação RESTful (Serving). Contém o *gateway* de entrada para inferências do modelo e verificação de saúde da aplicação. |
 | `core/` | Configurações globais e utilitários transversais, como gerenciamento de variáveis de ambiente e padronização de *logs* estruturados. |
 | `domain/` | Definição dos contratos de dados (Schemas Pydantic) que transitam pela API, garantindo validação e consistência. |
-| `infrastructure/` | Implementação de adaptadores para serviços externos, notadamente a comunicação com *Data Lakes* (S3/MinIO) para armazenamento de dados e artefatos. |
+| `infrastructure/` | Implementação de adaptadores para serviços externos, notadamente a comunicação com *Data Lakes* (S3/MinIO), registro de modelos (MLflow) e sincronização de modelos para o S3. |
 | `ml/` | Lógica central de Machine Learning, incluindo arquitetura da rede neural LSTM, engenharia de *features*, *transformers* customizados e o orquestrador de inferência. |
 | `pipelines/` | Rotinas de engenharia de dados e MLOps. Scripts executáveis para ingestão de dados, processamento Medallion, *tuning* de hiperparâmetros e promoção de modelos. |
 
@@ -28,6 +28,13 @@ O diretório `src/` está organizado de forma modular, garantindo a separação 
 Responsável por expor o modelo de Machine Learning para consumo via requisições HTTP.
 
 *   **`main.py`**: Ponto de entrada da aplicação FastAPI. Orquestra o ciclo de vida (*lifespan*) da API, encarregando-se de baixar e carregar na memória global os artefatos do modelo (modelo Keras e *pipeline* Scikit-Learn) a partir do *Storage* antes de aceitar requisições. Também configura *middlewares* de CORS e monitoramento (Prometheus).
+*   **`pipeline_routes.py`**: Responsável por executar os pipelines de dados e ML.
+    *   `/pipeline/sync_model`: Sincroniza o modelo Champion para o S3.
+    *   `/pipeline/ingest`: Executa o pipeline de ingestão de dados.
+    *   `/pipeline/process`: Executa o pipeline de processamento de dados.
+    *   `/pipeline/train`: Executa o pipeline de treinamento e otimização de hiperparâmetros.
+    *   `/pipeline/full`: Executa o pipeline completo (Ingestão → Processamento → Treinamento).
+    *   `/pipeline/status/{workflow_id}`: Consulta o estado detalhado de um workflow.
 *   **`routes.py`**: Define os *endpoints* da API.
     *   `/predict`: Rota principal que recebe um *ticker* (ex: JNJ), aciona o fluxo de inferência em tempo real e retorna a predição de preço, desvio padrão e nível de confiança.
     *   `/health`: Rota de *healthcheck* para verificar a disponibilidade do serviço.
@@ -44,13 +51,14 @@ Responsável por expor o modelo de Machine Learning para consumo via requisiçõ
 ### 4. Infraestrutura (`infrastructure/`)
 
 *   **`storage_client.py`**: Cliente de abstração para armazenamento de objetos compatível com S3 (AWS ou MinIO). Fornece métodos encapsulados para *download/upload* de artefatos de modelo e leitura/escrita de arquivos Parquet nas diferentes camadas do *Data Lake* (Bronze, Silver, Gold).
+*   **`registry.py`**: Cliente de abstração para registro de modelos MLflow e DagsHub. Fornece métodos encapsulados para registrar modelos, obter o modelo Champion e sincronizar modelos para o S3.
 
 ### 5. Machine Learning (`ml/`)
 
 O coração analítico e preditivo do projeto.
 
-*   **`inference.py`**: Módulo crítico que une os artefatos treinados aos dados novos. Possui funções para buscar o modelo "Champion" no MLflow, aplicar a engenharia de *features* em tempo real, rodar predições com *MC Dropout* (para calcular confiança e incerteza) e transformar os retornos percentuais de volta em preços em dólares (USD).
 *   **`features.py`**: Utilitários para criação de janelas temporais (*sliding windows* 3D) necessárias para redes LSTM e definição do *pipeline* de *features* base.
+*   **`inference.py`**: Módulo crítico que une os artefatos treinados aos dados novos. Possui funções para buscar o modelo "Champion" no MLflow, aplicar a engenharia de *features* em tempo real, rodar predições com *MC Dropout* (para calcular confiança e incerteza) e transformar os retornos percentuais de volta em preços em dólares (USD).
 *   **`model.py`**: Define a arquitetura topológica da rede neural profunda. Contém a função construtora `build_lstm_model` que instancia um modelo sequencial Keras com camadas LSTM, Dropout e Dense.
 *   **`transformers.py`**: Classes customizadas compatíveis com Scikit-Learn (`BaseEstimator`, `TransformerMixin`) para calcular indicadores financeiros. Inclui `DailyReturnTransformer`, `EMATransformer` (Médias Móveis Exponenciais), `RSITransformer` (Índice de Força Relativa) e `FeatureSelector`.
 
@@ -59,6 +67,7 @@ O coração analítico e preditivo do projeto.
 *Scripts* desenhados para rodar de forma isolada ou orquestrados por ferramentas como Apache Airflow.
 
 *   **`ingest_data.py`**: Etapa inicial de extração. Conecta-se à API do Yahoo Finance (`yfinance`), baixa dados históricos de ativos e os salva na camada **Bronze** do *Data Lake* em formato Parquet.
+*   **`model_sync.py`**: Script para sincronizar o modelo Champion para o S3. Caso o modelo não exista no S3, ele será baixado do MLflow e enviado para o S3.
 *   **`process_data.py`**: Implementa a arquitetura Medallion. Move os dados da camada Bronze para a **Silver** (limpeza de nulos e ordenação temporal) e, em seguida, aplica o *pipeline* de transformadores para gerar os indicadores financeiros (RSI, Distâncias de EMA), salvando o resultado final enriquecido na camada **Gold**.
 *   **`tune_pipeline.py`**: *Script* de experimentação e treinamento. Consome a camada Gold, aplica padronização de escala (`StandardScaler`) evitando *Data Leakage*, e utiliza **Optuna** para buscar os melhores hiperparâmetros (unidades, *dropout*, taxa de aprendizado). Registra automaticamente métricas e modelos no **MLflow / DagsHub**.
 *   **`promote_model.py`**: Lógica de CI/CD para modelos. Avalia as *runs* registradas no MLflow, identifica o modelo com melhor desempenho (menor RMSE) e o promove para a *tag* `Production` (Champion), sincronizando seus artefatos para o *bucket* de *Serving*.

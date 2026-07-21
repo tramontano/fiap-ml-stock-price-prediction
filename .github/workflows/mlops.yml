@@ -1,12 +1,6 @@
 name: MLOps CI/CD Pipeline
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
@@ -35,7 +29,7 @@ jobs:
           uv run pytest -m "not integration" || true
 
       - name: Promote Model to Champion/Challenger
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch'
         env:
           MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
           MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
@@ -49,6 +43,6 @@ jobs:
           echo "MLFLOW_TRACKING_URI=$MLFLOW_TRACKING_URI" > .env/mlflow.env
           echo "MLFLOW_TRACKING_USERNAME=$MLFLOW_TRACKING_USERNAME" >> .env/mlflow.env
           echo "MLFLOW_TRACKING_PASSWORD=$MLFLOW_TRACKING_PASSWORD" >> .env/mlflow.env
-          
+
           # Roda o script de promoção de modelos
           uv run python src/pipelines/promote_model.py

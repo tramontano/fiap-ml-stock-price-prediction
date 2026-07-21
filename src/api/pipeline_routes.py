@@ -65,10 +65,24 @@ async def trigger_workflow(
                 detail=f"Unable to reach Celery Director service: {exc}",
             )
 
+@log_route(logger=logger, include_args=True)
+@router.post("/pipeline/sync_model",
+    response_model=WorkflowTriggerResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Dispara o sync do modelo",
+)
+async def trigger_sync_model(payload: TrainRequest):
+    """Sincroniza o modelo Champion para o S3."""
+    return await trigger_workflow(
+        workflow_name="MODEL_SYNC",
+        payload_data={
+            "params": payload.params,
+        },
+    )
+
 
 @log_route(logger=logger, include_args=True)
-@router.post(
-    "/pipeline/ingest",
+@router.post("/pipeline/ingest",
     response_model=WorkflowTriggerResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Dispara o pipeline de ingestão de dados (Bronze)",
@@ -86,8 +100,7 @@ async def trigger_ingest(payload: IngestRequest):
 
 
 @log_route(logger=logger, include_args=True)
-@router.post(
-    "/pipeline/process",
+@router.post("/pipeline/process",
     response_model=WorkflowTriggerResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Dispara o pipeline de processamento e feature engineering",
@@ -113,8 +126,7 @@ async def trigger_process(payload: ProcessRequest):
 
 
 @log_route(logger=logger, include_args=True)
-@router.post(
-    "/pipeline/train",
+@router.post("/pipeline/train",
     response_model=WorkflowTriggerResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Dispara o treinamento do modelo LSTM",
@@ -130,8 +142,7 @@ async def trigger_train(payload: TrainRequest):
 
 
 @log_route(logger=logger, include_args=True)
-@router.post(
-    "/pipeline/full",
+@router.post("/pipeline/full",
     response_model=WorkflowTriggerResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Dispara o pipeline completo (Ingestão → Processamento → Treinamento)",
@@ -150,8 +161,7 @@ async def trigger_full(payload: FullPipelineRequest):
 
 
 @log_route(logger=logger, include_args=False)
-@router.get(
-    "/pipeline/status/{workflow_id}",
+@router.get("/pipeline/status/{workflow_id}",
     response_model=WorkflowStatusResponse,
     status_code=status.HTTP_200_OK,
     summary="Consulta o estado detalhado de um workflow",

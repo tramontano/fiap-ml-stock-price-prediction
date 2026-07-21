@@ -1,6 +1,4 @@
-name: Fase4
-
-version: "3"
+name: mlops
 
 services:
   # ---------------------------------------------------------
@@ -8,7 +6,7 @@ services:
   # ---------------------------------------------------------
   minio:
     image: minio/minio:latest
-    container_name: minio
+    #container_name: minio
     ports:
       - "9000:9000" # Porta da API (usada pelo boto3/Python)
       - "9001:9001" # Porta da Interface Gráfica (Web UI)
@@ -28,7 +26,7 @@ services:
   # ---------------------------------------------------------
   minio-init:
     image: minio/mc:latest
-    container_name: minio_init
+    #container_name: minio_init
     depends_on:
       minio:
         condition: service_healthy # Só roda quando o MinIO estiver 100% pronto
@@ -53,7 +51,7 @@ services:
   # ---------------------------------------------------------
   postgres:
     image: postgres:15-alpine
-    container_name: postgres
+    #container_name: postgres
     ports:
       - "5432:5432"
     env_file: ".env"
@@ -65,12 +63,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   # ---------------------------------------------------------
-  # 3. Observability Layer (Prometheus + Grafana)
+  # 3. Observability Layer (Prometheus + Grafana + Optuna)
   # ---------------------------------------------------------
   prometheus:
     image: prom/prometheus:v2.53.0
-    container_name: mlops_prometheus
+    #container_name: mlops_prometheus
     ports:
       - "9090:9090"
     #network_mode: bridge
@@ -86,7 +85,7 @@ services:
 
   grafana:
     image: grafana/grafana:11.1.0
-    container_name: mlops_grafana
+    #container_name: grafana
     ports:
       - "3000:3000"
     environment:
@@ -103,9 +102,9 @@ services:
 
   optuna-dashboard:
     image: ghcr.io/optuna/optuna-dashboard:latest
-    container_name: optuna-dashboard
+    #container_name: optuna-dashboard
     ports:
-      - "8080:8080"
+      - "8888:8080"
     env_file: ".env"
     depends_on:
       - postgres
@@ -115,29 +114,26 @@ services:
   # ---------------------------------------------------------
   # FastAPI: Aplicação de Inferência e API
   # ---------------------------------------------------------
-  web:
-    image: localhost/web:latest
-    container_name: web
+  model:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+    image: ptsantos/private:fiap-ml-stock-price-prediction
     ports:
       - "8001:8001"
     env_file: ".env"
     environment:
-      - ENVIRONMENT=${ENVIRONMENT}
-      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
-      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
-      - MLFLOW_TRACKING_USERNAME=${MLFLOW_TRACKING_USERNAME}
-      - MLFLOW_TRACKING_PASSWORD=${MLFLOW_TRACKING_PASSWORD}
-      - PORT=8001
-    #network_mode: bridge
+      - S3_ENDPOINT_URL=http://minio:9000
+      - OPTUNA_STORAGE_URI=postgresql+psycopg2://admin:admin@postgres:5432/stock-price-lstm
     volumes:
       # Mapeia o código fonte para hot-reload no ambiente local
       - ./src:/app/src:ro
     depends_on:
+      model-init:
+        condition: service_completed_successfully
       minio:
         condition: service_healthy
-    command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    command: ["uvicorn", "src.api.main:app", "--host", "${API_HOST:-[IP_ADDRESS]}", "--port", "${API_PORT:-8001}", "--workers", "${WEB_CONCURRENCY:-1}"]
     develop:
       watch:
         # Sincroniza o diretório de trabalho com o diretório `/src` no container
@@ -147,17 +143,30 @@ services:
           # Exclui o ambiente virtual do projeto
           ignore:
             - .venv/
-
         # Rebuild the image on changes to the `pyproject.toml`
         - action: rebuild
           path: ./pyproject.toml
+
+  # ---------------------------------------------------------
+  # Model Init: Container para sincronização inicial
+  # ---------------------------------------------------------
+  model-init:
+    image: ptsantos/private:fiap-ml-stock-price-prediction
+    env_file: ".env"
+    environment:
+      - S3_ENDPOINT_URL=http://minio:9000
+      - OPTUNA_STORAGE_URI=postgresql+psycopg2://admin:admin@postgres:5432/stock-price-lstm
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "src.pipelines.model_sync"]
 
   # ---------------------------------------------------------
   # Apache Airflow: Orquestração de Workflows
   # ---------------------------------------------------------
   airflow-init:
     image: apache/airflow:2.9.2-python3.11
-    container_name: airflow_init
+    #container_name: airflow_init
     depends_on:
       postgres:
         condition: service_healthy
@@ -170,9 +179,9 @@ services:
       airflow users create --role Admin --username admin --email admin --firstname admin --lastname admin --password admin || true
       "
 
-  airflow-webserver:
+  airflow:
     image: apache/airflow:2.9.2-python3.11
-    container_name: airflow_webserver
+    #container_name: airflow
     ports:
       - "8080:8080"
     depends_on:
@@ -199,7 +208,7 @@ services:
 
   airflow-scheduler:
     image: apache/airflow:2.9.2-python3.11
-    container_name: airflow_scheduler
+    #container_name: airflow-scheduler
     depends_on:
       postgres:
         condition: service_healthy
@@ -222,28 +231,27 @@ services:
       - ./src:/opt/airflow/src
     command: scheduler
 
-
   # ---------------------------------------------------------
   # LocalStack: Emulador da AWS para testes locais do Terraform
   # ---------------------------------------------------------
-  localstack:
-    image: localstack/localstack:latest
-    container_name: localstack
-    ports:
-      - "127.0.0.1:4566:4566"            # Porta principal da API AWS
-      - "127.0.0.1:4510-4559:4510-4559"
-    environment:
-      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
-      - SERVICES=s3,ecr,ecs,iam,ec2,elb
-      - DOCKER_HOST=unix:///var/run/docker.sock
-    #network_mode: bridge
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
-      - localstack_data:/var/lib/localstack
+  #localstack:
+  #  image: localstack/localstack:latest
+  #  container_name: localstack
+  #  ports:
+  #    - "127.0.0.1:4566:4566"            # Porta principal da API AWS
+  #    - "127.0.0.1:4510-4559:4510-4559"
+  #  environment:
+  #    - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
+  #    - SERVICES=s3,ecr,ecs,iam,ec2,elb
+  #    - DOCKER_HOST=unix:///var/run/docker.sock
+  #  #network_mode: bridge
+  #  volumes:
+  #    - "/var/run/docker.sock:/var/run/docker.sock"
+  #    - localstack_data:/var/lib/localstack
 
 volumes:
   minio_data:
   postgres_data:
   prometheus_data:
   grafana_data:
-  localstack_data:
+  #localstack_data:

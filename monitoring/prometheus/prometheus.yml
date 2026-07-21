@@ -3,9 +3,9 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: "fastapi-app"
+  - job_name: "fiap-ml-stock-price-prediction"
     static_configs:
-      - targets: ["127.0.0.1:8000"]
+      - targets: ["model:8001"]
         labels:
           environment: "local"
           application: "ml-inference-api"

@@ -8,6 +8,7 @@ __pycache__/
 
 # ML runs
 mlruns/
+models/
 
 # Distribution / packaging
 .Python

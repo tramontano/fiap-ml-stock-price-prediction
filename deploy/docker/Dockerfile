@@ -56,8 +56,6 @@ RUN uv sync \
 
 # 3. Copia o codigo e instala o pacote local (deps ja estao em cache)
 COPY src/ ./src/
-COPY tasks/ ./tasks/
-COPY workflows.yml ./
 
 RUN uv sync \
         --frozen \
@@ -88,8 +86,6 @@ WORKDIR /app
 # Copia a venv ja resolvida e o codigo do stage builder
 COPY --from=builder --chown=appuser:appgroup /app/.venv  ./.venv
 COPY --from=builder --chown=appuser:appgroup /app/src    ./src
-COPY --from=builder --chown=appuser:appgroup /app/tasks  ./tasks
-COPY --from=builder --chown=appuser:appgroup /app/workflows.yml  ./workflows.yml
 COPY --chown=appuser:appgroup pyproject.toml ./
 
 # Cria o diretorio de artefatos que o lifespan vai popular no boot
@@ -110,4 +106,4 @@ HEALTHCHECK --interval=30s \
         || exit 1
 
 # Ponto de entrada: uvicorn sem --reload (controlado pela variavel ENVIRONMENT no lifespan)
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8001"]
+#CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8001"]

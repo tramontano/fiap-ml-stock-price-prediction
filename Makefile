@@ -36,8 +36,8 @@ clean:
 
 start:
 	@echo "Iniciando a infraestrutura local (MinIO, PostgreSQL, etc.)..."
-	docker-compose up -d
+	docker compose up -d
 
 stop:
 	@echo "Parando e destruindo a infraestrutura local..."
-	docker-compose down
+	docker compose down
