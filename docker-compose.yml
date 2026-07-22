@@ -39,6 +39,8 @@ services:
       mc mb myminio/silver --ignore-existing;
       mc mb myminio/gold --ignore-existing;
       mc mb myminio/models --ignore-existing;
+      mc mb myminio/loki-data --ignore-existing;
+      mc mb myminio/loki-ruler --ignore-existing;
 
       echo 'Configuração do MinIO concluída!';
       "
@@ -71,11 +73,11 @@ services:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--web.enable-lifecycle'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
 
   grafana:
     image: grafana/grafana:12.3.9
@@ -131,7 +133,17 @@ services:
         condition: service_completed_successfully
       minio:
         condition: service_healthy
-    command: ["uvicorn", "src.api.main:app", "--host", "${API_HOST:-[IP_ADDRESS]}", "--port", "${API_PORT:-8001}", "--workers", "${WEB_CONCURRENCY:-1}"]
+    command:
+      [
+        "uvicorn",
+        "src.api.main:app",
+        "--host",
+        "${API_HOST:-[IP_ADDRESS]}",
+        "--port",
+        "${API_PORT:-8001}",
+        "--workers",
+        "${WEB_CONCURRENCY:-1}",
+      ]
     develop:
       watch:
         # Sincroniza o diretório de trabalho com o diretório `/src` no container
@@ -267,17 +279,16 @@ services:
         condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
-      airflow-scheduler:
-        condition: service_healthy
     env_file: ".env"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/config:/opt/airflow/config
       - ./airflow/plugins:/opt/airflow/plugins
-      - ./src:/opt/airflow/src
+      - ./src:/opt/airflow/dags/src
     command: api-server
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      test:
+        ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -291,7 +302,11 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
     healthcheck:
-      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      test:
+        [
+          "CMD-SHELL",
+          'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"',
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -318,7 +333,6 @@ services:
         condition: service_completed_successfully
     command: dag-processor
 
-
   airflow-statsd:
     image: prom/statsd-exporter:v0.26.0
     ports:
@@ -331,12 +345,26 @@ services:
 
   loki:
     image: grafana/loki:3.7.3
+    user: 10001:10001
     ports:
       - "3100:3100"
     volumes:
       - ./monitoring/loki/loki-config.yaml:/etc/loki/loki-config.yaml
-      - loki_data:/tmp/loki
-    command: -config.file=/etc/loki/loki-config.yaml
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - LOKI_INSTANCE_ID=mlops-loki-1
+    command:
+      ["-config.file=/etc/loki/loki-config.yaml", "-config.expand-env=true"]
+    healthcheck:
+      test: ["CMD", "/usr/bin/loki", "-health"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: always
 
   promtail:
@@ -356,4 +384,3 @@ volumes:
   prometheus_data:
   grafana_data:
   loki_data:
-

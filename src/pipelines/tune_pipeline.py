@@ -192,7 +192,7 @@ def train(param: dict = None, parquet_name: str = None):
         time_steps=20, parquet_name="JNJ/19850102_20251230.parquet"
     )
 
-    # 2. Configura a experiência principal no MLflow
+    # 2. Configura o experimento principal no MLflow
     mlflow.set_experiment("stock-price-lstm")
     mlflow.autolog()
     # Iniciamos uma "run" pai no MLflow para agrupar todas as tentativas do Optuna

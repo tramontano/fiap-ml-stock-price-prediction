@@ -241,3 +241,6 @@ graphify-out/
 # Gemini AI
 .gemini
 .agents
+
+# duplicated src mounted within dags
+airflow/dags/src/
