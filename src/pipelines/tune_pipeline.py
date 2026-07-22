@@ -162,7 +162,7 @@ def objective(trial, X_train, y_train, X_val, y_val):
     return metricas["rmse"]  # O Optuna vai tentar MINIMIZAR este valor
 
 
-def train(param: dict = None):
+def train(param: dict = None, parquet_name: str = None):
     logger.info("Iniciando o pipeline de Tuning...")
     if param is None:
         client = RegistryClient()
@@ -266,7 +266,7 @@ def train(param: dict = None):
 
 
 if __name__ == "__main__":
-    train()
+    train(parquet_name="JNJ/19850102_20251230.parquet")
 #    logger.info("Iniciando o pipeline de Tuning...")
 #
 #    # 1. Preparação dos dados

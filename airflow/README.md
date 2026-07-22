@@ -11,19 +11,20 @@ A pasta `airflow/` está organizada da seguinte forma:
 | Diretório/Arquivo | Descrição Principal |
 | :--- | :--- |
 | `dags/` | Diretório onde as DAGs do Airflow são armazenadas. |
-| `dags/retrain_dag.py` | Definição principal das DAGs de orquestração do projeto. |
+| `dags/airflow_pipeline_dag.py` | Definição principal das DAGs de orquestração do projeto. |
 
 ---
 
 ## Descrição dos Módulos
 
-### `retrain_dag.py`
+### `airflow_pipeline_dag.py`
 
-Contém três DAGs construídas usando `PythonOperator` que importam diretamente as lógicas de negócio presentes no pacote `src.pipelines`. Essa abordagem mantém o código do pipeline isolado do código do orquestrador.
+Contém quatro DAGs construídas usando `PythonOperator` que importam diretamente as lógicas de negócio presentes no pacote `src.pipelines`. Essa abordagem mantém o código do pipeline isolado do código do orquestrador.
 
 1. **`ml_full_pipeline`**: Orquestra a execução de ponta a ponta. Extrai os dados, processa (feature engineering) e treina o modelo LSTM. Essa DAG é agendada para executar periodicamente (todo domingo à meia-noite) e usa o XCom para trafegar metadados entre as tasks.
 2. **`ml_data_pipeline`**: Foca exclusivamente em manter o Data Lake atualizado (Bronze -> Silver -> Gold) com os dados mais recentes, sem engatilhar um novo treinamento do modelo.
 3. **`ml_train_only`**: Executa apenas a rotina de treinamento, utilizando os dados já presentes na camada Gold. Ideal para testar novos conjuntos de hiperparâmetros ou refazer treinamentos isolados.
+4. **`ml_model_sync`**: Sincroniza os artefatos do modelo Champion para o S3/MinIO.
 
 ---
 

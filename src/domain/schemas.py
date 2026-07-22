@@ -111,7 +111,7 @@ class PromoteModelResponse(BaseModel):
 
 
 # =============================================================================
-# Schemas de Pipeline (Celery Director Workflows)
+# Schemas de Pipeline (Airflow DAG Runs)
 # =============================================================================
 
 
@@ -162,37 +162,56 @@ class FullPipelineRequest(BaseModel):
     )
 
 
-class WorkflowTriggerResponse(BaseModel):
-    """Resposta ao disparar um workflow via Director."""
+class DAGRunTriggerResponse(BaseModel):
+    """Resposta ao disparar uma DAG Run via Airflow REST API."""
 
-    workflow_id: str = Field(
-        ..., description="ID único do workflow criado no Director."
+    dag_id: str = Field(
+        ..., description="Identificador da DAG no Airflow (ex: 'ml_full_pipeline')."
     )
-    project: str = Field(
-        ..., description="Nome do projeto no Director (ex: 'ml')."
+    dag_run_id: str = Field(
+        ..., description="ID único da DAG Run criada no Airflow."
     )
-    name: str = Field(
-        ..., description="Nome do workflow (ex: 'FULL_PIPELINE')."
+    logical_date: str = Field(
+        ..., description="Data lógica da execução (ISO 8601)."
     )
-    status: str = Field(
-        ..., description="Estado inicial do workflow (ex: 'pending')."
-    )
-
-
-class TaskStatusDetail(BaseModel):
-    """Detalhe do estado de uma task dentro de um workflow."""
-
-    name: str = Field(..., description="Nome da task (ex: 'INGEST_DATA').")
-    status: str = Field(
-        ..., description="Estado da task (pending, progress, success, error)."
+    state: str = Field(
+        ..., description="Estado inicial da DAG Run (ex: 'queued')."
     )
 
 
-class WorkflowStatusResponse(BaseModel):
-    """Resposta com o estado completo de um workflow."""
+class TaskInstanceDetail(BaseModel):
+    """Detalhe do estado de uma task instance dentro de uma DAG Run."""
 
-    workflow_id: str = Field(..., description="ID único do workflow.")
-    status: str = Field(..., description="Estado geral do workflow.")
-    tasks: list[TaskStatusDetail] = Field(
-        default_factory=list, description="Lista de tasks com seus estados."
+    task_id: str = Field(..., description="Identificador da task (ex: 'ingest_data').")
+    state: str | None = Field(
+        default=None,
+        description="Estado da task (scheduled, queued, running, success, failed, etc.).",
+    )
+    start_date: str | None = Field(
+        default=None, description="Timestamp de início da task (ISO 8601)."
+    )
+    end_date: str | None = Field(
+        default=None, description="Timestamp de término da task (ISO 8601)."
+    )
+    duration: float | None = Field(
+        default=None, description="Duração da task em segundos."
+    )
+
+
+class DAGRunStatusResponse(BaseModel):
+    """Resposta com o estado completo de uma DAG Run."""
+
+    dag_id: str = Field(..., description="Identificador da DAG.")
+    dag_run_id: str = Field(..., description="ID único da DAG Run.")
+    state: str = Field(
+        ..., description="Estado geral da DAG Run (queued, running, success, failed)."
+    )
+    start_date: str | None = Field(
+        default=None, description="Timestamp de início da DAG Run (ISO 8601)."
+    )
+    end_date: str | None = Field(
+        default=None, description="Timestamp de término da DAG Run (ISO 8601)."
+    )
+    tasks: list[TaskInstanceDetail] = Field(
+        default_factory=list, description="Lista de task instances com seus estados."
     )

@@ -5,7 +5,7 @@
 * [x] **Artefatos e MLflow:** Implementar a lógica de busca do modelo usando o alias `champion` via MLflow Client (eliminando a necessidade de `.env` manual na API).
 * [x] **Dockerização:** Criar `Dockerfile.api` focado em produção (Multi-stage build usando `uv` e imagem `python-slim`).
 * [x] **Observabilidade:** Adicionar métricas padrão do Prometheus e criar Dashboards no Grafana.
-* [x] **Orquestração (Airflow):** Adicionar a DAG (`retrain_dag.py`) para orquestrar o retreino.
+* [x] **Orquestração (Airflow):** Adicionar as DAGs (`airflow_pipeline_dag.py`) compatíveis com Airflow 3.3.0 para orquestrar ingestão, processamento e retreino.
 * [x] **Orquestração (CI/CD):** Criar workflow alternativo e leve no GitHub Actions (`retrain.yml`) para pipeline de dados com custo zero.
 * [x] **Infraestrutura como Código (IaC):** Desenvolver todo o projeto Terraform (`deploy/terraform/`) usando módulos (Networking, Storage, ECR, IAM, Compute) e separação de ambientes (`dev` e `prod`).
 * [x] **Testes Locais AWS:** Integrar o **LocalStack** no `docker-compose.yml` e escrever o guia de testes locais com o Terraform (`tflocal`).

@@ -46,8 +46,12 @@ class Settings(BaseSettings):
     OPTUNA_STORAGE_URI: Optional[str] = None
     MODEL_STAGE: Literal["champion", "challenger"] = "champion"
 
-
-
+    # ==========================================
+    # Orquestração (Apache Airflow)
+    # ==========================================
+    AIRFLOW_API_URL: str = "http://localhost:8080"
+    AIRFLOW_USERNAME: str = None
+    AIRFLOW_PASSWORD: str = None
 
     # Configuração do Pydantic para ler do arquivo .env quando rodar localmente
     model_config = SettingsConfigDict(

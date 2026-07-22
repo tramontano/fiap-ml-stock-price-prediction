@@ -1,0 +1,55 @@
+mappings:
+- match: "airflow.dag.*.*.duration"
+  match_metric_type: observer
+  name: "airflow_dag_task_duration"
+  labels:
+    dag_id: "$1"
+    task_id: "$2"
+- match: "airflow.dagrun.duration.success.*"
+  match_metric_type: observer
+  name: "airflow_dagrun_duration_success"
+  labels:
+    dag_id: "$1"
+- match: "airflow.dagrun.duration.failed.*"
+  match_metric_type: observer
+  name: "airflow_dagrun_duration_failed"
+  labels:
+    dag_id: "$1"
+- match: "airflow.ti.start.*.*"
+  match_metric_type: counter
+  name: "airflow_task_start_total"
+  labels:
+    dag_id: "$1"
+    task_id: "$2"
+- match: "airflow.ti.finish.*.*.*"
+  match_metric_type: counter
+  name: "airflow_task_finish_total"
+  labels:
+    dag_id: "$1"
+    task_id: "$2"
+    state: "$3"
+- match: "airflow.dagrun.schedule_delay.*"
+  match_metric_type: observer
+  name: "airflow_dagrun_schedule_delay"
+  labels:
+    dag_id: "$1"
+- match: "airflow.pool.running_slots.*"
+  match_metric_type: gauge
+  name: "airflow_pool_running_slots"
+  labels:
+    pool_name: "$1"
+- match: "airflow.pool.queued_slots.*"
+  match_metric_type: gauge
+  name: "airflow_pool_queued_slots"
+  labels:
+    pool_name: "$1"
+- match: "airflow.pool.open_slots.*"
+  match_metric_type: gauge
+  name: "airflow_pool_open_slots"
+  labels:
+    pool_name: "$1"
+- match: "airflow.pool.starving_tasks.*"
+  match_metric_type: gauge
+  name: "airflow_pool_starving_tasks"
+  labels:
+    pool_name: "$1"
