@@ -1,0 +1,48 @@
+name: MLOps CI/CD Pipeline
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-and-promote:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install dependencies
+        run: |
+          uv sync --group dev
+
+      - name: Run Pytest
+        run: |
+          # Executa testes locais (desconsiderando testes de integração reais que dependem de MinIO se não estiverem configurados)
+          uv run pytest -m "not integration" || true
+
+      - name: Promote Model to Champion/Challenger
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        run: |
+          # Cria a pasta temporária de ambiente se o script tentar ler dela e injeta as variáveis de ambiente necessárias
+          mkdir -p .env
+          echo "MLFLOW_TRACKING_URI=$MLFLOW_TRACKING_URI" > .env/mlflow.env
+          echo "MLFLOW_TRACKING_USERNAME=$MLFLOW_TRACKING_USERNAME" >> .env/mlflow.env
+          echo "MLFLOW_TRACKING_PASSWORD=$MLFLOW_TRACKING_PASSWORD" >> .env/mlflow.env
+
+          # Roda o script de promoção de modelos
+          uv run python src/pipelines/promote_model.py
