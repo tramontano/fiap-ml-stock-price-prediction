@@ -763,8 +763,9 @@ class RegistryClient:
                 f"{prefix}{self.SCALER_FILENAME}",
             )
 
-        if not os.path.isfile(f"{local_path}{self.MODEL_FILENAME}") or \
-         not os.path.isfile(f"{local_path}{self.SCALER_FILENAME}"):
+        if not os.path.isfile(
+            f"{local_path}{self.MODEL_FILENAME}"
+        ) or not os.path.isfile(f"{local_path}{self.SCALER_FILENAME}"):
             os.makedirs(local_path, exist_ok=True)
             self.storage.download(
                 self.MODELS_BUCKET,
@@ -832,10 +833,10 @@ if __name__ == "__main__":
     print(f"Challenger ID: {challenger_id}")
     champion_id = client.get_champion_run_id()
     print(f"Champion ID: {champion_id}")
-#    # client.tag_challenger() #1 Tag um modelo para challenger
-#    # client.promote_to_champion() #2 Promove o challenger para champion
-#    # client.sync_stage_to_s3("Champion") #3 Sincroniza o champion para o S3
-    model, scaler, run_id = client.load_model() # Carrega o modelo champion
+    #    # client.tag_challenger() #1 Tag um modelo para challenger
+    #    # client.promote_to_champion() #2 Promove o challenger para champion
+    #    # client.sync_stage_to_s3("Champion") #3 Sincroniza o champion para o S3
+    model, scaler, run_id = client.load_model()  # Carrega o modelo champion
     print(f"Modelo carregado: {model}")
     print(f"Scaler carregado: {scaler}")
     print(f"Run ID: {run_id}")
