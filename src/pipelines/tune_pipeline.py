@@ -74,7 +74,7 @@ def load_and_prepare_data(time_steps: int = 20, parquet_name: str = "data.parque
     return X_train, y_train, X_val, y_val, scaler
 
 
-def objective(trial, X_train, y_train, X_val, y_val):
+def objective(trial, X_train, y_train, X_val, y_val, fitted_pipeline):
     """Função objetivo do Optuna: treina um modelo e devolve o erro a minimizar."""
 
     # 1. O Optuna sugere hiperparâmetros dinamicamente
@@ -86,9 +86,8 @@ def objective(trial, X_train, y_train, X_val, y_val):
         "activation": trial.suggest_categorical(
             "activation", ["tanh", "relu", "leaky_relu", "elu"]
         ),
-        # Para acelerar testes, usamos poucas epochs, mas em produção seriam 50-100
-        # "epochs": 20
-        "epochs": 75,
+        # 50 a 100 epochs são o ideal para produção
+        "epochs": 50,
     }
     # Inicia o tracking no MLflow para esta tentativa (run)
     with mlflow.start_run(nested=True) as child_run:
@@ -192,7 +191,7 @@ def train(param: dict = None, parquet_name: str = None):
         time_steps=20, parquet_name="JNJ/19850102_20251230.parquet"
     )
 
-    # 2. Configura a experiência principal no MLflow
+    # 2. Configura o experimento principal no MLflow
     mlflow.set_experiment("stock-price-lstm")
     mlflow.autolog()
     # Iniciamos uma "run" pai no MLflow para agrupar todas as tentativas do Optuna
@@ -293,7 +292,7 @@ if __name__ == "__main__":
 #            f"Iniciando o Optuna ({n_trials} tentativas). Pode demorar alguns minutos..."
 #        )
 #        study.optimize(
-#            lambda trial: objective(trial, X_train, y_train, X_val, y_val),
+#            lambda trial: objective(trial, X_train, y_train, X_val, y_val,fitted_pipeline),
 #            n_trials=n_trials,
 #            n_jobs=-1,
 #        )

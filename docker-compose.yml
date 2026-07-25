@@ -39,6 +39,8 @@ services:
       mc mb myminio/silver --ignore-existing;
       mc mb myminio/gold --ignore-existing;
       mc mb myminio/models --ignore-existing;
+      mc mb myminio/loki-data --ignore-existing;
+      mc mb myminio/loki-ruler --ignore-existing;
 
       echo 'Configuração do MinIO concluída!';
       "
@@ -71,11 +73,11 @@ services:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--web.enable-lifecycle'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
 
   grafana:
     image: grafana/grafana:12.3.9
@@ -131,7 +133,17 @@ services:
         condition: service_completed_successfully
       minio:
         condition: service_healthy
-    command: ["uvicorn", "src.api.main:app", "--host", "${API_HOST:-[IP_ADDRESS]}", "--port", "${API_PORT:-8001}", "--workers", "${WEB_CONCURRENCY:-1}"]
+    command:
+      [
+        "uvicorn",
+        "src.api.main:app",
+        "--host",
+        "${API_HOST:-[IP_ADDRESS]}",
+        "--port",
+        "${API_PORT:-8001}",
+        "--workers",
+        "${WEB_CONCURRENCY:-1}",
+      ]
     develop:
       watch:
         # Sincroniza o diretório de trabalho com o diretório `/src` no container
@@ -173,90 +185,25 @@ services:
       - _AIRFLOW_WWW_USER_CREATE=true
       - _AIRFLOW_WWW_USER_USERNAME=${AIRFLOW_USERNAME}
       - _AIRFLOW_WWW_USER_PASSWORD=${AIRFLOW_PASSWORD}
+      - PYTHONPATH=/opt/airflow/src
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/config:/opt/airflow/config
       - ./airflow/plugins:/opt/airflow/plugins
+      - ./src:/opt/airflow/src
+      - ./pyproject.toml:/opt/airflow/pyproject.toml
     entrypoint: /bin/bash
     # yamllint disable rule:line-length
     command:
       - -c
       - |
-        if [[ -z "${AIRFLOW_UID}" ]]; then
-          echo
-          echo -e "\033[1;33mWARNING!!!: AIRFLOW_UID not set!\e[0m"
-          echo "If you are on Linux, you SHOULD follow the instructions below to set "
-          echo "AIRFLOW_UID environment variable, otherwise files will be owned by root."
-          echo "For other operating systems you can get rid of the warning with manually created .env file:"
-          echo "    See: https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#setting-the-right-airflow-user"
-          echo
-          export AIRFLOW_UID=$$(id -u)
-        fi
-        one_meg=1048576
-        mem_available=$$(($$(getconf _PHYS_PAGES) * $$(getconf PAGE_SIZE) / one_meg))
-        cpus_available=$$(grep -cE 'cpu[0-9]+' /proc/stat)
-        disk_available=$$(df / | tail -1 | awk '{print $$4}')
-        warning_resources="false"
-        if (( mem_available < 4000 )) ; then
-          echo
-          echo -e "\033[1;33mWARNING!!!: Not enough memory available for Docker.\e[0m"
-          echo "At least 4GB of memory required. You have $$(numfmt --to iec $$((mem_available * one_meg)))"
-          echo
-          warning_resources="true"
-        fi
-        if (( cpus_available < 2 )); then
-          echo
-          echo -e "\033[1;33mWARNING!!!: Not enough CPUS available for Docker.\e[0m"
-          echo "At least 2 CPUs recommended. You have $${cpus_available}"
-          echo
-          warning_resources="true"
-        fi
-        if (( disk_available < one_meg * 10 )); then
-          echo
-          echo -e "\033[1;33mWARNING!!!: Not enough Disk space available for Docker.\e[0m"
-          echo "At least 10 GBs recommended. You have $$(numfmt --to iec $$((disk_available * 1024 )))"
-          echo
-          warning_resources="true"
-        fi
-        if [[ $${warning_resources} == "true" ]]; then
-          echo
-          echo -e "\033[1;33mWARNING!!!: You have not enough resources to run Airflow (see above)!\e[0m"
-          echo "Please follow the instructions to increase amount of resources available:"
-          echo "   https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#before-you-begin"
-          echo
-        fi
-        echo
-        echo "Creating missing opt dirs if missing:"
-        echo
         mkdir -v -p /opt/airflow/{logs,dags,plugins,config}
-        echo
-        echo "Airflow version:"
         /entrypoint airflow version
-        echo
-        echo "Files in shared volumes:"
-        echo
-        ls -la /opt/airflow/{logs,dags,plugins,config}
-        echo
-        echo "Running airflow config list to create default config file if missing."
-        echo
         /entrypoint airflow config list >/dev/null
-        echo
-        echo "Files in shared volumes:"
-        echo
-        ls -la /opt/airflow/{logs,dags,plugins,config}
-        echo
-        echo "Change ownership of files in /opt/airflow to ${AIRFLOW_UID:-50000}:0"
-        echo
         chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/
-        echo
-        echo "Change ownership of files in shared volumes to ${AIRFLOW_UID:-50000}:0"
-        echo
         chown -v -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/{logs,dags,plugins,config}
-        echo
-        echo "Files in shared volumes:"
-        echo
-        ls -la /opt/airflow/{logs,dags,plugins,config}
         airflow users create --role Admin --username "${AIRFLOW_USERNAME}" --email admin --firstname admin --lastname admin --password "${AIRFLOW_PASSWORD}" || true
+        uv sync
 
   airflow:
     image: apache/airflow:3.3.0-python3.11
@@ -267,9 +214,9 @@ services:
         condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
-      airflow-scheduler:
-        condition: service_healthy
     env_file: ".env"
+    environment:
+      - PYTHONPATH=/opt/airflow/src
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/config:/opt/airflow/config
@@ -277,7 +224,8 @@ services:
       - ./src:/opt/airflow/src
     command: api-server
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      test:
+        ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -291,7 +239,11 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
     healthcheck:
-      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      test:
+        [
+          "CMD-SHELL",
+          'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"',
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -307,6 +259,8 @@ services:
   airflow-dag-processor:
     image: apache/airflow:3.3.0-python3.11
     env_file: ".env"
+    environment:
+      - PYTHONPATH=/opt/airflow/src
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
@@ -317,7 +271,6 @@ services:
       airflow-init:
         condition: service_completed_successfully
     command: dag-processor
-
 
   airflow-statsd:
     image: prom/statsd-exporter:v0.26.0
@@ -331,12 +284,26 @@ services:
 
   loki:
     image: grafana/loki:3.7.3
+    user: 10001:10001
     ports:
       - "3100:3100"
     volumes:
       - ./monitoring/loki/loki-config.yaml:/etc/loki/loki-config.yaml
-      - loki_data:/tmp/loki
-    command: -config.file=/etc/loki/loki-config.yaml
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - LOKI_INSTANCE_ID=mlops-loki-1
+    command:
+      ["-config.file=/etc/loki/loki-config.yaml", "-config.expand-env=true"]
+    healthcheck:
+      test: ["CMD", "/usr/bin/loki", "-health"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: always
 
   promtail:
@@ -356,4 +323,3 @@ volumes:
   prometheus_data:
   grafana_data:
   loki_data:
-
