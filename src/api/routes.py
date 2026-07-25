@@ -210,6 +210,7 @@ async def delete_model(
     response_model=PredictResponse,
     status_code=status.HTTP_200_OK,
     summary="Realiza a previsão do próximo preço de fecho usando a rede LSTM",
+    tags=["Model"],
 )
 async def predict_stock(payload: PredictRequest, request: Request):
     """Recebe um Ticker, busca os dados recentes e prevê o preço de amanhã."""
