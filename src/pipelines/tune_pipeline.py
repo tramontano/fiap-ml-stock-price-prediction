@@ -2,7 +2,6 @@ import os
 import pickle
 from datetime import datetime
 
-import dagshub
 import mlflow
 import numpy as np
 from sklearn.metrics import (
@@ -23,21 +22,6 @@ from src.ml.features import create_sequences
 from src.ml.model import build_lstm_model
 
 logger = setup_logging()
-
-
-# Inicializando dagshub
-if settings.MLFLOW_TRACKING_URI:
-    MLFLOW_S3_IGNORE_TLS = True
-    MLFLOW_S3_ENDPOINT_URL = settings.S3_ENDPOINT_URL
-    mlflow.set_tracking_uri(settings.MLFLOW_TRACKING_URI)
-    # Autenticação via variáveis de ambiente
-    dagshub.init(
-        repo_owner="tramontano",
-        repo_name="fiap-ml-stock-price-prediction",
-        mlflow=True,
-    )
-
-    mlflow.autolog()
 
 
 def load_and_prepare_data(time_steps: int = 20, parquet_name: str = "data.parquet"):
@@ -192,13 +176,13 @@ def train(param: dict = None, parquet_name: str = None):
     )
 
     # 2. Configura o experimento principal no MLflow
-    mlflow.set_experiment("stock-price-lstm")
-    mlflow.autolog()
+    client = RegistryClient()
+
     # Iniciamos uma "run" pai no MLflow para agrupar todas as tentativas do Optuna
-    with mlflow.start_run(run_name=datetime.now().strftime("%Y%m%d_%H%M%S")) as run_id:
+    with client.start_run(run_name=datetime.now().strftime("%Y%m%d_%H%M%S")) as run_id:
         run_id = run_id.info.run_id
         # Regista os parâmetros escolhidos
-        mlflow.log_params(param)
+        client.log_params(param)
 
         # Constrói o modelo com os parâmetros sugeridos
         model = build_lstm_model(
@@ -240,7 +224,7 @@ def train(param: dict = None, parquet_name: str = None):
         }
 
         # Regista as métricas no MLflow
-        mlflow.log_metrics(metricas)
+        client.log_metrics(metricas)
 
         # Monkey Patch: Injeta a versão no Keras para o MLflow não dar erro
         import tensorflow as tf
@@ -265,45 +249,50 @@ def train(param: dict = None, parquet_name: str = None):
 
 
 if __name__ == "__main__":
-    train(parquet_name="JNJ/19850102_20251230.parquet")
-#    logger.info("Iniciando o pipeline de Tuning...")
-#
-#    # 1. Preparação dos dados
-#    X_train, y_train, X_val, y_val, fitted_pipeline = load_and_prepare_data(
-#        time_steps=20, parquet_name="JNJ/19850102_20251230.parquet"
-#    )
-#
-#    # 2. Configura a experiência principal no MLflow
-#    mlflow.set_experiment("stock-price-lstm")
-#    mlflow.autolog()
-#    # Iniciamos uma "run" pai no MLflow para agrupar todas as tentativas do Optuna
-#    with mlflow.start_run(run_name=datetime.now().strftime("%Y%m%d_%H%M%S")):
-#        # 3. Cria o estudo do Optuna
-#        study = optuna.create_study(
-#            direction="minimize",
-#            study_name="lstm_tuning",
-#            storage=settings.OPTUNA_STORAGE_URI,
-#            load_if_exists=True,
-#        )
-#
-#        # Executa N tentativas (trials)
-#        n_trials = 2
-#        logger.info(
-#            f"Iniciando o Optuna ({n_trials} tentativas). Pode demorar alguns minutos..."
-#        )
-#        study.optimize(
-#            lambda trial: objective(trial, X_train, y_train, X_val, y_val,fitted_pipeline),
-#            n_trials=n_trials,
-#            n_jobs=-1,
-#        )
-#
-#        logger.info("\nOtimização concluída!")
-#        logger.info(f"Melhores hiperparâmetros encontrados: {study.best_params}")
-#        logger.info(f"Menor RMSE atingido: {study.best_value}")
-#
-#        # Regista os melhores parâmetros na run pai
-#        mlflow.log_params({"best_" + k: v for k, v in study.best_params.items()})
-#        mlflow.log_metric("best_rmse", study.best_value)
-#        # Regista os melhores parâmetros na run pai
-#        mlflow.log_params({"best_" + k: v for k, v in study.best_params.items()})
-#        mlflow.log_metric("best_rmse", study.best_value)
+    # train(parquet_name="JNJ/19850102_20251230.parquet")
+    import optuna
+
+    logger.info("Iniciando o pipeline de Tuning...")
+
+    # 1. Preparação dos dados
+    X_train, y_train, X_val, y_val, fitted_pipeline = load_and_prepare_data(
+        time_steps=20, parquet_name="JNJ/19850102_20251230.parquet"
+    )
+
+    # 2. Configura a experiência principal no MLflow
+    client = RegistryClient()
+    # client.set_experiment("stock-price-lstm")
+    # client.autolog()
+    # Iniciamos uma "run" pai no MLflow para agrupar todas as tentativas do Optuna
+    # client.create_run(experiment_id=settings.MLFLOW_EXPERIMENT_ID)
+    with client.start_run(run_name=datetime.now().strftime("%Y%m%d_%H%M%S")):
+        # 3. Cria o estudo do Optuna
+        study = optuna.create_study(
+            direction="minimize",
+            study_name="lstm_tuning",
+            load_if_exists=True,
+        )
+
+        # Executa N tentativas (trials)
+        n_trials = 3
+        logger.info(
+            f"Iniciando o Optuna ({n_trials} tentativas). Pode demorar alguns minutos..."
+        )
+        study.optimize(
+            lambda trial: objective(
+                trial, X_train, y_train, X_val, y_val, fitted_pipeline
+            ),
+            n_trials=n_trials,
+            n_jobs=-1,
+        )
+
+        logger.info("\nOtimização concluída!")
+        logger.info(f"Melhores hiperparâmetros encontrados: {study.best_params}")
+        logger.info(f"Menor RMSE atingido: {study.best_value}")
+
+        # Regista os melhores parâmetros na run pai
+        client.log_params({"best_" + k: v for k, v in study.best_params.items()})
+        client.log_metric("best_rmse", study.best_value)
+        # Regista os melhores parâmetros na run pai
+        client.log_params({"best_" + k: v for k, v in study.best_params.items()})
+        client.log_metric("best_rmse", study.best_value)

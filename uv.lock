@@ -1098,7 +1098,7 @@ dev = [
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "matplotlib", specifier = ">=3.10.9" },
-    { name = "optuna", specifier = ">=4.9.0" },
+    { name = "optuna", specifier = ">=4.6.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "ruff", specifier = ">=0.15.16" },
     { name = "scikit-learn", specifier = ">=1.9.0" },

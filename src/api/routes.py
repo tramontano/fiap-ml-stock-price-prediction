@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Body, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from prometheus_client import Counter, Gauge, Histogram
 
 from src.core.config import settings
@@ -20,6 +21,30 @@ from src.ml.inference import predict
 logger = setup_logging()
 
 router = APIRouter(prefix=settings.API_V1_STR)
+
+# Configuração de autenticação básica
+security = HTTPBasic()
+
+
+def verify_api_key(credentials: HTTPBasicCredentials = Depends(security)):
+    """Verifica as credenciais de autenticação básica para as rotas de tarefas."""
+    correct_username = settings.API_USERNAME
+    correct_password = settings.API_PASSWORD
+
+    if (
+        credentials.username != correct_username
+        or credentials.password != correct_password
+    ):
+        logger.warning(
+            f"Tentativa de acesso não autorizado com usuário: {credentials.username}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciais inválidas",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials
+
 
 # --- Prometheus Setup ---
 # Define um medidor para guardar o valor da última previsão de preço
@@ -63,7 +88,10 @@ last_predicted_price = Gauge(
     summary="Retorna informações do modelo atualmente em produção (Champion) e Challenger",
     tags=["Model"],
 )
-def get_model(request: Request):
+async def get_model(
+    request: Request,
+    credentials: HTTPBasicCredentials = Depends(verify_api_key),
+):
     """Retorna informações do modelo atualmente em produção (Champion) e Challenger."""
     client = request.app.state.client
     try:
@@ -111,7 +139,11 @@ def get_model(request: Request):
     summary="Promove o modelo Challenger para Champion",
     tags=["Model"],
 )
-def promote_model(request: Request, payload: PromoteModelRequest = Body(None)):
+async def promote_model(
+    request: Request,
+    payload: PromoteModelRequest = Body(None),
+    credentials: HTTPBasicCredentials = Depends(verify_api_key),
+):
     """Promove o modelo Challenger para Champion."""
     client = request.app.state.client
     try:
@@ -153,7 +185,11 @@ def promote_model(request: Request, payload: PromoteModelRequest = Body(None)):
     summary="Deleta o modelo",
     tags=["Model"],
 )
-def delete_model(request: Request, payload: DeleteModelRequest):
+async def delete_model(
+    request: Request,
+    payload: DeleteModelRequest,
+    credentials: HTTPBasicCredentials = Depends(verify_api_key),
+):
     """Deleta o modelo"""
     client = request.app.state.client
     try:
@@ -233,6 +269,7 @@ async def predict_stock(payload: PredictRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@log_route(logger=logger, include_args=True)
 @router.get("/health")
 async def health_check(request: Request):
     """Verifica o status da API e retorna informações básicas.
