@@ -1,0 +1,54 @@
+# =============================================================================
+# Ambiente DEV — Exemplo de Valores (terraform.tfvars)
+# Copie este arquivo para terraform.tfvars e preencha com seus valores reais
+# =============================================================================
+
+# ==========================================
+# Projeto e Ambiente
+# ==========================================
+project_name = "fiap-mlops"
+environment  = "dev"
+aws_region   = "us-east-1"
+
+# ==========================================
+# Networking
+# ==========================================
+vpc_cidr = "10.0.0.0/16"
+
+# ==========================================
+# Compute (ECS)
+# ==========================================
+task_cpu     = 0.25  # 256 CPU units (0.25 vCPU)
+task_memory  = 512   # 512 MB
+min_capacity = 1     # Mínimo 1 instância
+max_capacity = 2     # Máximo 2 instâncias
+
+# ==========================================
+# Container
+# ==========================================
+container_image_tag = "latest"  # Dev: usar latest
+
+# ==========================================
+# MLflow & DagsHub
+# ==========================================
+mlflow_tracking_uri      = "https://dagshub.com/seu_usuario/seu_repo/mlflow"
+mlflow_tracking_username = "seu_usuario_dagshub"
+mlflow_experiment_name   = "stock-price-prediction"
+mlflow_experiment_id     = "0"
+dagshub_repo_name        = "seu_usuario/seu_repo"
+
+# ==========================================
+# Autenticação da API
+# ==========================================
+api_username = "admin"
+api_password = "dev_password_123"
+
+# ==========================================
+# CORS (Origens Permitidas)
+# ==========================================
+allowed_origins = "*"  # Em dev, permitir tudo
+
+# ==========================================
+# Optuna (Opcional)
+# ==========================================
+optuna_storage_uri = null  # Em dev, usar SQLite local

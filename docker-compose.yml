@@ -63,7 +63,7 @@ services:
     restart: always
 
   # ---------------------------------------------------------
-  # 3. Observability Layer (Prometheus + Grafana + Optuna)
+  # 3. Observability Layer
   # ---------------------------------------------------------
   prometheus:
     image: prom/prometheus:v3.13.1
@@ -97,190 +97,6 @@ services:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - prometheus
-
-  optuna-dashboard:
-    image: ghcr.io/optuna/optuna-dashboard:latest
-    ports:
-      - "8888:8080"
-    env_file: ".env"
-    depends_on:
-      - postgres
-    command:
-      - "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
-
-  # ---------------------------------------------------------
-  # FastAPI: Aplicação de Inferência e API
-  # ---------------------------------------------------------
-  model:
-    build:
-      context: .
-      dockerfile: deploy/docker/Dockerfile
-    image: ptsantos/private:fiap-ml-stock-price-prediction
-    ports:
-      - "8001:8001"
-    env_file: ".env"
-    environment:
-      - S3_ENDPOINT_URL=http://minio:9000
-      - OPTUNA_STORAGE_URI=postgresql+psycopg2://admin:admin@postgres:5432/stock-price-lstm
-      - AIRFLOW_API_URL=http://airflow:8080
-      - AIRFLOW_USERNAME=admin
-      - AIRFLOW_PASSWORD=admin
-    volumes:
-      # Mapeia o código fonte para hot-reload no ambiente local
-      - ./src:/app/src:ro
-    depends_on:
-      model-init:
-        condition: service_completed_successfully
-      minio:
-        condition: service_healthy
-    command:
-      [
-        "uvicorn",
-        "src.api.main:app",
-        "--host",
-        "${API_HOST:-[IP_ADDRESS]}",
-        "--port",
-        "${API_PORT:-8001}",
-        "--workers",
-        "${WEB_CONCURRENCY:-1}",
-      ]
-    develop:
-      watch:
-        # Sincroniza o diretório de trabalho com o diretório `/src` no container
-        - action: sync
-          path: ./src
-          target: /app/src
-          # Exclui o ambiente virtual do projeto
-          ignore:
-            - .venv/
-        # Rebuild the image on changes to the `pyproject.toml`
-        - action: rebuild
-          path: ./pyproject.toml
-
-  # ---------------------------------------------------------
-  # Model Init: Sincronização do ponteiro do modelo Champion
-  # ---------------------------------------------------------
-  model-init:
-    image: ptsantos/private:fiap-ml-stock-price-prediction
-    env_file: ".env"
-    environment:
-      - S3_ENDPOINT_URL=http://minio:9000
-      - OPTUNA_STORAGE_URI=postgresql+psycopg2://admin:admin@postgres:5432/stock-price-lstm
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: ["python", "-m", "src.pipelines.model_sync"]
-
-  # ---------------------------------------------------------
-  # Apache Airflow: Orquestração de Workflows
-  # ---------------------------------------------------------
-  airflow-init:
-    image: apache/airflow:3.3.0-python3.11
-    depends_on:
-      postgres:
-        condition: service_healthy
-    env_file: ".env"
-    environment:
-      - _AIRFLOW_DB_MIGRATE=true
-      - _AIRFLOW_WWW_USER_CREATE=true
-      - _AIRFLOW_WWW_USER_USERNAME=${AIRFLOW_USERNAME}
-      - _AIRFLOW_WWW_USER_PASSWORD=${AIRFLOW_PASSWORD}
-      - PYTHONPATH=/opt/airflow/src
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ./airflow/config:/opt/airflow/config
-      - ./airflow/plugins:/opt/airflow/plugins
-      - ./src:/opt/airflow/src
-      - ./pyproject.toml:/opt/airflow/pyproject.toml
-    entrypoint: /bin/bash
-    # yamllint disable rule:line-length
-    command:
-      - -c
-      - |
-        mkdir -v -p /opt/airflow/{logs,dags,plugins,config}
-        /entrypoint airflow version
-        /entrypoint airflow config list >/dev/null
-        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/
-        chown -v -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/{logs,dags,plugins,config}
-        airflow users create --role Admin --username "${AIRFLOW_USERNAME}" --email admin --firstname admin --lastname admin --password "${AIRFLOW_PASSWORD}" || true
-        uv sync
-
-  airflow:
-    image: apache/airflow:3.3.0-python3.11
-    ports:
-      - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      airflow-init:
-        condition: service_completed_successfully
-    env_file: ".env"
-    environment:
-      - PYTHONPATH=/opt/airflow/src
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ./airflow/config:/opt/airflow/config
-      - ./airflow/plugins:/opt/airflow/plugins
-      - ./src:/opt/airflow/src
-    command: api-server
-    healthcheck:
-      test:
-        ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    restart: always
-
-  airflow-scheduler:
-    image: apache/airflow:3.3.0-python3.11
-    env_file: ".env"
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ./src:/opt/airflow/src
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"',
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-      airflow-init:
-        condition: service_completed_successfully
-    command: scheduler
-
-  airflow-dag-processor:
-    image: apache/airflow:3.3.0-python3.11
-    env_file: ".env"
-    environment:
-      - PYTHONPATH=/opt/airflow/src
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ./src:/opt/airflow/src
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-      airflow-init:
-        condition: service_completed_successfully
-    command: dag-processor
-
-  airflow-statsd:
-    image: prom/statsd-exporter:v0.26.0
-    ports:
-      - "8125:8125/udp"
-      - "9102:9102"
-    volumes:
-      - ./monitoring/prometheus/statsd_mapping.yaml:/tmp/statsd_mapping.yaml
-    command:
-      - "--statsd.mapping-config=/tmp/statsd_mapping.yaml"
 
   loki:
     image: grafana/loki:3.7.3
@@ -316,6 +132,51 @@ services:
     depends_on:
       - loki
     restart: always
+
+  # ---------------------------------------------------------
+  # FastAPI: Aplicação de Inferência e API
+  # ---------------------------------------------------------
+  model:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+    image: ptsantos/private:fiap-ml-stock-price-prediction
+    ports:
+      - "8001:8001"
+    env_file: ".env"
+    volumes:
+      # Mapeia o código fonte para hot-reload no ambiente local
+      - ./src:/app/src:ro
+    depends_on:
+      model-init:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+    command:
+      [
+        "uvicorn",
+        "src.api.main:app",
+        "--host",
+        "${API_HOST:-[IP_ADDRESS]}",
+        "--port",
+        "${API_PORT:-8001}",
+        "--workers",
+        "${WEB_CONCURRENCY:-1}",
+      ]
+
+  # ---------------------------------------------------------
+  # Model Init: Sincronização do ponteiro do modelo Champion
+  # ---------------------------------------------------------
+  model-init:
+    image: ptsantos/private:fiap-ml-stock-price-prediction
+    env_file: ".env"
+    environment:
+      - S3_ENDPOINT_URL=http://minio:9000
+      - OPTUNA_STORAGE_URI=postgresql+psycopg2://admin:admin@postgres:5432/stock-price-lstm
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "src.pipelines.model_sync"]
 
 volumes:
   minio_data:

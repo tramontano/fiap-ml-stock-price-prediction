@@ -41,17 +41,17 @@ class Settings(BaseSettings):
     MLFLOW_TRACKING_USERNAME: Optional[str] = None
     MLFLOW_TRACKING_PASSWORD: Optional[str] = None
     MLFLOW_EXPERIMENT_NAME: Optional[str] = None
+    MLFLOW_EXPERIMENT_ID: Optional[str] = None
     DAGSHUB_REPO_NAME: Optional[str] = None
     DAGSHUB_APP_TOKEN: Optional[str] = None
     OPTUNA_STORAGE_URI: Optional[str] = None
     MODEL_STAGE: Literal["champion", "challenger"] = "champion"
 
     # ==========================================
-    # Orquestração (Apache Airflow)
+    # Autenticação de Rotas API
     # ==========================================
-    AIRFLOW_API_URL: str = "http://localhost:8080"
-    AIRFLOW_USERNAME: str = None
-    AIRFLOW_PASSWORD: str = None
+    API_USERNAME: str = None
+    API_PASSWORD: str = None
 
     # Configuração do Pydantic para ler do arquivo .env quando rodar localmente
     model_config = SettingsConfigDict(

@@ -77,6 +77,8 @@ from typing import Any
 import joblib
 import mlflow
 from mlflow.exceptions import MlflowException
+from mlflow.tracking import MlflowClient
+from mlflow.tracking.fluent import log_metrics, log_params, set_experiment, start_run
 
 from src.core.config import settings
 from src.core.logging import setup_logging
@@ -101,7 +103,7 @@ logger = setup_logging()
 # -----------------------------------------------------------------------
 
 
-class RegistryClient:
+class RegistryClient(MlflowClient):
     """Cliente CRUD para o registry de experimentos (DagsHub + MLflow + S3).
 
     Encapsula toda a lógica de:
@@ -162,11 +164,17 @@ class RegistryClient:
             MlflowException: Se não for possível conectar ou criar o
                 experimento no servidor de tracking.
         """
+        super().__init__()
+
         os.environ["MLFLOW_TRACKING_URI"] = settings.MLFLOW_TRACKING_URI
         os.environ["MLFLOW_TRACKING_USERNAME"] = settings.MLFLOW_TRACKING_USERNAME
         os.environ["MLFLOW_TRACKING_PASSWORD"] = settings.DAGSHUB_APP_TOKEN
         # os.environ["MLFLOW_TRACKING_INSECURE_TLS"] = "true"
+        self.log_params = log_params
+        self.log_metrics = log_metrics
+        self.set_experiment = set_experiment
         mlflow.set_experiment(settings.MLFLOW_EXPERIMENT_NAME)
+        self.start_run = start_run
         self.client = mlflow.tracking.MlflowClient()
         self.storage = StorageClient()
         self.experiment_name: str = settings.MLFLOW_EXPERIMENT_NAME

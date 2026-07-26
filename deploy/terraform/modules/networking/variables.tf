@@ -40,6 +40,12 @@ variable "private_subnet_cidrs" {
   default     = ["10.0.101.0/24", "10.0.102.0/24"]
 }
 
+variable "nat_gateway_per_az" {
+  description = "Se true, cria um NAT Gateway por Availability Zone (prod). Se false, cria apenas um (dev)."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Tags adicionais para todos os recursos do módulo."
   type        = map(string)

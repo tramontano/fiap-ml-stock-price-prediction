@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from src.api.routes import router as api_router
-from src.api.pipeline_routes import router as pipeline_router
+from src.api.task_routes import router as task_router
 from src.core.config import settings
 from src.core.logging import APILoggingMiddleware, setup_logging
 from src.infrastructure.registry import RegistryClient
@@ -75,7 +75,7 @@ app.add_middleware(
 app.add_middleware(APILoggingMiddleware, logger=logger)
 
 app.include_router(api_router)
-app.include_router(pipeline_router)
+app.include_router(task_router)
 
 Instrumentator().instrument(app).expose(app)
 

@@ -1,0 +1,72 @@
+# =============================================================================
+# Ambiente PROD — Exemplo de Valores (terraform.tfvars)
+# Copie este arquivo para terraform.tfvars e preencha com seus valores reais
+# IMPORTANTE: Nunca commitar este arquivo com valores sensíveis no Git!
+# Use variáveis de ambiente (TF_VAR_*) ou AWS Secrets Manager
+# =============================================================================
+
+# ==========================================
+# Projeto e Ambiente
+# ==========================================
+project_name = "fiap-mlops"
+environment  = "prod"
+aws_region   = "us-east-1"
+
+# ==========================================
+# Networking
+# ==========================================
+vpc_cidr = "10.0.0.0/16"
+
+# ==========================================
+# Compute (ECS)
+# ==========================================
+task_cpu     = 1    # 1024 CPU units (1 vCPU)
+task_memory  = 2048 # 2048 MB (2 GB)
+min_capacity = 2    # Mínimo 2 instâncias (HA)
+max_capacity = 10   # Máximo 10 instâncias
+
+# ==========================================
+# Container
+# ==========================================
+container_image_tag = "v1.0.0"  # Prod: usar versionamento semântico
+
+# ==========================================
+# MLflow & DagsHub
+# ==========================================
+mlflow_tracking_uri      = "https://dagshub.com/seu_usuario/seu_repo/mlflow"
+mlflow_tracking_username = "seu_usuario_dagshub"
+mlflow_experiment_name   = "stock-price-prediction"
+mlflow_experiment_id     = "0"
+dagshub_repo_name        = "seu_usuario/seu_repo"
+
+# ==========================================
+# Autenticação da API
+# ==========================================
+# IMPORTANTE: Use TF_VAR_api_username e TF_VAR_api_password em vez de hardcoding
+# Exemplo: export TF_VAR_api_username="admin"
+# Exemplo: export TF_VAR_api_password="senha_forte_aleatoria"
+api_username = "admin"
+api_password = "MUDE_ISSO_PARA_SENHA_FORTE"
+
+# ==========================================
+# CORS (Origens Permitidas)
+# ==========================================
+allowed_origins = "https://seu-dominio.com,https://www.seu-dominio.com"
+
+# ==========================================
+# Domínio e TLS
+# ==========================================
+domain_name               = "api.seu-dominio.com"
+subject_alternative_names = ["api.seu-dominio.com", "seu-dominio.com"]
+
+# ==========================================
+# Notificações (SNS)
+# ==========================================
+# ARN do tópico SNS para receber alarmes de CPU alta, latência, etc
+sns_topic_arn = "arn:aws:sns:us-east-1:123456789012:fiap-mlops-alerts"
+
+# ==========================================
+# Optuna (Opcional)
+# ==========================================
+# Se usar PostgreSQL: postgresql://user:password@host:5432/optuna_db
+optuna_storage_uri = null  # Em prod, considere usar PostgreSQL

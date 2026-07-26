@@ -244,3 +244,7 @@ graphify-out/
 
 # duplicated src mounted within dags
 airflow/dags/src/
+
+# terraform variables file
+deploy/terraform/environments/dev/terraform.tfvars
+deploy/terraform/environments/prod/terraform.tfvars
