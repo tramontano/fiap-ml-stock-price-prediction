@@ -28,9 +28,8 @@ A estratégia de modelagem adota a abordagem de **regressão** para prever o ret
 
 A rede neural implementada em `src/ml/model.py` segue uma arquitetura sequencial com as seguintes características:
 
-- **Camadas LSTM:** Duas camadas recorrentes com dropout para regularização, capturando dependências temporais complexas.
-- **Normalização:** Batch Normalization entre camadas para estabilizar o treinamento.
-- **Saída:** Camada densa com ativação linear para regressão contínua.
+- **Camadas LSTM:** Uma camada recorrente seguida de dropout para regularização, focada em capturar dependências temporais mantendo a eficiência computacional.
+- **Saída:** Camada densa com 1 neurônio e ativação linear, otimizada para regressão contínua.
 - **Função de Perda:** Mean Squared Error (MSE) para penalizar erros de magnitude.
 
 ### Otimização Bayesiana com Optuna
@@ -43,7 +42,7 @@ O pipeline de treinamento em `src/pipelines/tune_pipeline.py` executa otimizaç�
 - **Taxa de Dropout:** 0.1 a 0.5
 - **Taxa de Aprendizado:** 1e-5 a 1e-3
 - **Tamanho do Batch:** 16, 32, 64
-- **Épocas:** 50 a 150
+- **Épocas:** 50 (valor fixado para otimizar o tempo de convergência em produção)
 
 **Critério de Otimização:** Minimização do RMSE (Root Mean Square Error) no conjunto de validação. O Optuna aplica *pruning* automático para interromper trials ineficientes precocemente, reduzindo o tempo total de experimentação.
 
@@ -58,34 +57,6 @@ Cada trial é registrado no MLflow hospedado no DagsHub (`dagshub.com/tramontano
 
 O modelo com melhor performance é automaticamente tagueado como **Challenger** no registry, preparando-o para validação e eventual promoção.
 
-### Comparação de Algoritmos
-
-O projeto implementa comparação rigorosa entre múltiplas arquiteturas:
-
-- **LSTM Vanilla:** Baseline com duas camadas recorrentes
-- **LSTM com Atenção:** Variante que aprende a focar em períodos temporais relevantes
-- **Ensemble:** Combinação de múltiplos modelos para reduzir variância
-
-Métricas comparativas são expostas em dashboard do Grafana, permitindo visualização em tempo real da performance relativa.
-
----
-
-## Modelagem Não Supervisionada
-
-Como diferencial do projeto, implementamos técnicas de modelagem não supervisionada para enriquecimento de features e detecção de anomalias.
-
-### Redução de Dimensionalidade
-
-O módulo `src/ml/feature_engineering.py` inclui transformadores customizados que aplicam PCA (Principal Component Analysis) aos indicadores técnicos, reduzindo a dimensionalidade sem perda significativa de variância explicada. Isso melhora a eficiência computacional e reduz o risco de overfitting.
-
-### Detecção de Anomalias
-
-Implementamos Isolation Forest para identificar períodos anômalos no histórico de preços, marcando-os no dataset para análise posterior. Anomalias são registradas no MLflow como artefatos de diagnóstico.
-
-### Clustering de Períodos Similares
-
-K-Means agrupa períodos históricos com padrões similares de volatilidade e tendência, permitindo análise qualitativa de "quais períodos no passado se parecem com hoje?". Essa análise é exposta como métrica de negócio no Grafana.
-
 ---
 
 ## Apresentação Crítica dos Resultados
@@ -99,21 +70,21 @@ K-Means agrupa períodos históricos com padrões similares de volatilidade e te
    - **Dependência de Dados Históricos:** A qualidade das previsões degrada para períodos sem precedentes históricos.
    - **Latência de Dados:** O Yahoo Finance introduz atraso de até 15 minutos em dados intraday, limitando aplicações de trading de alta frequência.
 
-3. **Validação em Produção:** O padrão Champion-Challenger permite validação contínua. O Challenger é servido em shadow mode (sem afetar usuários) para comparação com o Champion antes de promoção.
+3. **Validação em Produção:** O padrão Champion-Challenger permite validação contínua. Atualmente, a promoção do Challenger para Champion é baseada na comparação direta da métrica RMSE, garantindo que apenas modelos com performance superior sejam promovidos.
 
 ### Próximos Passos
 
 **Curto Prazo (V1.1):**
 
-- Integração de Alternative Data (análise de sentimento de notícias via FinBERT)
-- Suporte a múltiplos tickers com modelos especializados
-- Dashboard interativo com Streamlit para visualização de previsões
+- Implementação de técnicas de Modelagem Não Supervisionada (PCA, Isolation Forest, K-Means) para enriquecimento de features e detecção de anomalias.
+- Validação em Shadow Mode para o modelo Challenger antes da promoção definitiva.
+- Dashboard interativo com Streamlit para visualização de previsões.
 
 **Médio Prazo (V2):**
 
-- Arquitetura multimodal combinando series temporais com análise textual
-- Ensemble dinâmico que seleciona o melhor modelo por regime de mercado
-- Integração com APIs de corretoras para execução automática de trades
+- Exploração de arquiteturas mais complexas, como LSTM com Atenção e Ensembles.
+- Integração de Alternative Data (análise de sentimento de notícias via FinBERT).
+- Suporte a múltiplos tickers com modelos especializados.
 
 ---
 
@@ -133,7 +104,7 @@ A solução implementa o padrão Medallion de Data Lake, estruturando os dados e
 
 **Exemplo de Estrutura:**
 
-```
+```text
 bronze/
 ├── JNJ/
 │   ├── 2024-01-01_2024-06-30.parquet
@@ -167,37 +138,32 @@ bronze/
 
 1. **DailyReturnTransformer:** Calcula retorno percentual diário
 
-   ```
+   ```text
    Return_Close = (Close_t - Close_t-1) / Close_t-1 * 100
    ```
 
 2. **EMATransformer:** Médias Móveis Exponenciais em múltiplos períodos
 
-   ```
-   EMA_5 = Exponential Moving Average (período 5)
-   EMA_10 = Exponential Moving Average (período 10)
-   EMA_15 = Exponential Moving Average (período 15)
+   ```text
+   EMA_5 = Exponential Moving Average (período 5d)
+   EMA_10 = Exponential Moving Average (período 10d)
+   EMA_15 = Exponential Moving Average (período 15d)
    Dist_EMA_X = Close - EMA_X (distância do preço à média)
    ```
 
-3. **RSITransformer:** Índice de Força Relativa (período 15)
+3. **RSITransformer:** Índice de Força Relativa (período 15d)
 
-   ```
+   ```text
    RSI_15 = 100 - (100 / (1 + RS))
    onde RS = Média de Ganhos / Média de Perdas
    ```
 
-4. **StandardScaler:** Normalização para média 0 e desvio padrão 1
-
-   ```
-   X_scaled = (X - μ) / σ
-   ```
-
-**Armazenamento:** MinIO bucket `gold` com versionamento por run_id do MLflow
+**Armazenamento:** MinIO bucket `gold` com versionamento por run_id do MLflow.
+*Nota: A normalização (`StandardScaler`) não é persistida na camada Gold. Ela é aplicada dinamicamente durante as etapas de treinamento e inferência para evitar data leakage.*
 
 **Features Finais Utilizadas pelo LSTM:**
 
-```
+```text
 [Return_Close, RSI_15, Dist_EMA_5, Dist_EMA_10, Dist_EMA_15]
 ```
 
@@ -217,7 +183,7 @@ A estratégia de versionamento de modelos implementa um protocolo rigoroso para 
 
 **Armazenamento em S3/MinIO:**
 
-```
+```text
 models/
 ├── runs/
 │   ├── {run_id_champion}/
@@ -243,8 +209,8 @@ models/
 1. **Treinamento:** Optuna executa N trials, melhor modelo é salvo no MLflow
 2. **Tagging:** Melhor modelo é tagueado como `Challenger` via `RegistryClient.tag_challenger()`
 3. **Sincronização:** Artefatos são sincronizados para S3 via `RegistryClient.sync_stage_to_s3("challenger")`
-4. **Validação:** Challenger é servido em shadow mode (logs comparativos, sem afetar usuários)
-5. **Promoção:** Após validação, `RegistryClient.promote_to_champion(run_id)` atualiza ponteiros
+4. **Validação:** O desempenho do Challenger é comparado com o Champion atual utilizando a métrica RMSE.
+5. **Promoção:** Se o Challenger apresentar menor RMSE, `RegistryClient.promote_to_champion(run_id)` atualiza os ponteiros automaticamente.
 6. **Limpeza:** Modelos antigos não-Champion e não-Challenger são removidos do DagsHub (limite de ~100 experimentos)
 
 **Endpoints de Gestão:**
@@ -321,22 +287,20 @@ O projeto integra três registries complementares para garantir rastreabilidade,
 
 ---
 
-## 🏗️ Arquitetura e Infraestrutura (AWS)
+## Arquitetura e Infraestrutura (AWS)
 
 A infraestrutura foi desenhada para nível de produção, garantindo **Alta Disponibilidade (HA)**, **Segurança** e **Escalabilidade**.
 
 ![Architecture](deploy/terraform/architecture.png)
 
-### Destaques da Infraestrutura:
+### Destaques da Infraestrutura
+
 - **Compute**: Amazon ECS com Fargate (Serverless Containers).
 - **Networking**: VPC Privada, ALB Público, NAT Gateway por AZ.
 - **Segurança**: TLS/HTTPS (ACM), AWS Secrets Manager, IAM (Least Privilege).
 - **Auto Scaling**: Target Tracking (CPU, Memória, Requisições) e Step Scaling.
 - **Backup/DR**: S3 Cross-Region Replication (CRR) e AWS Backup.
 - **Observabilidade**: CloudWatch Logs, Insights e Alarmes (5xx, Latência).
-
-📖 **[Ver Documentação Completa da Infraestrutura](deploy/terraform/README.md)**
-📖 **[Ver Guia de Deployment e Operações](deploy/terraform/DEPLOYMENT_GUIDE.md)**
 
 ---
 
@@ -351,21 +315,21 @@ A infraestrutura foi desenhada para nível de produção, garantindo **Alta Disp
 
 ### Setup Inicial
 
-**1. Clone o Repositório**
+#### **1. Clone o Repositório**
 
 ```bash
 git clone https://github.com/tramontano/fiap-ml-stock-price-prediction.git
 cd fiap-ml-stock-price-prediction
 ```
 
-**2. Configure Variáveis de Ambiente**
+#### **2. Configure Variáveis de Ambiente**
 
 ```bash
 cp .env.example .env
 # Edite .env com suas credenciais DagsHub e AWS (se aplicável)
 ```
 
-**3. Instale Dependências**
+#### **3. Instale Dependências**
 
 ```bash
 make install
@@ -373,7 +337,7 @@ make install
 
 Este comando executa `uv sync`, instalando todas as dependências declaradas em `pyproject.toml` com lock determinístico via `uv.lock`.
 
-**4. Inicie a Stack Local**
+#### **4. Inicie a Stack Local**
 
 ```bash
 make start
@@ -382,12 +346,11 @@ make start
 Inicia containers de infraestrutura:
 
 - **MinIO:** Object storage (simula AWS S3)
-- **PostgreSQL:** Banco de dados para Airflow
+- **PostgreSQL:** Banco de dados de treinamento para Optuna
 - **Prometheus:** Coleta de métricas
 - **Grafana:** Visualização de métricas
-- **Airflow:** Orquestração de pipelines
 
-**5. Execute a API em Desenvolvimento**
+#### **5. Execute a API em Desenvolvimento**
 
 ```bash
 make run
@@ -526,7 +489,7 @@ Promove Challenger para Champion.
 }
 ```
 
-### Endpoints de Tarefas (Integração Airflow)
+### Endpoints de Tarefas (Integração pronta para consumo via Apache Airflow ou MWAA)
 
 Protegidos por autenticação Basic Auth, estes endpoints orquestram o pipeline de dados.
 
@@ -564,7 +527,7 @@ A solução implementa observabilidade em múltiplas camadas: infraestrutura, ap
 
 - Dashboard de latência da API
 - Dashboard de recursos (CPU, memória)
-- Dashboard de negócio (preços preditos, confiança)
+- Dashboard de agregação de logs
 
 **Loki:** Agregação de logs (opcional)
 
@@ -596,9 +559,6 @@ A solução implementa observabilidade em múltiplas camadas: infraestrutura, ap
 
 **Grafana:** `http://localhost:3000`
 
-- Usuário: `admin`
-- Senha: `admin` (alterar em produção)
-
 **Prometheus:** `http://localhost:9090`
 
 - Interface de query PromQL
@@ -608,14 +568,11 @@ A solução implementa observabilidade em múltiplas camadas: infraestrutura, ap
 
 ## Estrutura do Repositório
 
-```
+```text
 fiap-ml-stock-price-prediction/
 ├── .github/workflows/          # Pipelines CI/CD (GitHub Actions)
 │   ├── retrain.yml            # Retreinamento mensal agendado
 │   └── mlops.yml              # Validação e promoção em merge
-├── airflow/                    # Orquestração de pipelines
-│   └── dags/
-│       └── retrain_dag.py      # DAG para retreinamento
 ├── deploy/                     # Infraestrutura e deployment
 │   ├── docker/
 │   │   └── Dockerfile         # Build multi-stage otimizado
@@ -657,7 +614,6 @@ fiap-ml-stock-price-prediction/
 │   ├── unit/                 # Testes unitários
 │   └── integration/          # Testes de integração
 ├── docker-compose.yml         # Stack local (MinIO, Prometheus, Grafana)
-├── Dockerfile                 # Build para produção
 ├── Makefile                   # Atalhos de desenvolvimento
 ├── pyproject.toml            # Dependências e metadados
 ├── uv.lock                   # Lock determinístico
@@ -722,26 +678,3 @@ curl -X PATCH http://api.example.com/api/v1/model \
   -H "Authorization: Basic <credentials>" \
   -d '{"run_id": "<previous_champion_run_id>"}'
 ```
-
----
-
-## Próximos Passos para o Vídeo de Entrega
-
-Este README serve como roteiro completo para a gravação do vídeo de apresentação final. Recomenda-se seguir esta sequência:
-
-1. **Introdução (0:00-1:00):** Visão geral do projeto e problema resolvido
-2. **Exploração de Dados (1:00-3:00):** Demonstração do notebook EDA
-3. **Arquitetura Medallion (3:00-6:00):** Explicação das camadas Bronze/Silver/Gold
-4. **Modelagem (6:00-10:00):** Arquitetura LSTM, Optuna, comparação de algoritmos
-5. **Champion-Challenger (10:00-12:00):** Estratégia de versionamento e promoção
-6. **API de Serving (12:00-14:00):** Demonstração ao vivo de requisições `/predict`
-7. **Observabilidade (14:00-15:00):** Dashboards Prometheus/Grafana
-8. **Conclusões (15:00-16:00):** Resultados, limitações e próximos passos
-
----
-
-## Suporte e Contribuições
-
-Para dúvidas técnicas, consulte a documentação em `docs/` ou abra uma issue no GitHub. Contribuições são bem-vindas via pull requests.
-
-**Contato:** Equipe de Desenvolvimento | FIAP - Machine Learning Engineering
