@@ -1,0 +1,302 @@
+name: Terraform Deploy (Dev & Prod)
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'deploy/terraform/**'
+      - '.github/workflows/terraform-deploy.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'deploy/terraform/**'
+
+env:
+  AWS_REGION: us-east-1
+  TERRAFORM_VERSION: 1.6.0
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Terraform Validation & Format Check
+  # ─────────────────────────────────────────────────────────────────────────
+  validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive deploy/terraform/
+        continue-on-error: true
+
+      - name: Terraform Init (Dev)
+        run: |
+          cd deploy/terraform/environments/dev
+          terraform init -backend=false
+
+      - name: Terraform Validate (Dev)
+        run: |
+          cd deploy/terraform/environments/dev
+          terraform validate
+
+      - name: Terraform Init (Prod)
+        run: |
+          cd deploy/terraform/environments/prod
+          terraform init -backend=false
+
+      - name: Terraform Validate (Prod)
+        run: |
+          cd deploy/terraform/environments/prod
+          terraform validate
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Terraform Plan (Dev)
+  # ─────────────────────────────────────────────────────────────────────────
+  plan-dev:
+    name: Plan Dev Infrastructure
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop'
+    needs: validate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init (Dev)
+        run: |
+          cd deploy/terraform/environments/dev
+          terraform init
+
+      - name: Terraform Plan (Dev)
+        run: |
+          cd deploy/terraform/environments/dev
+          terraform plan -out=tfplan -no-color
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: tfplan-dev
+          path: deploy/terraform/environments/dev/tfplan
+
+      - name: Comment PR with Plan
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('deploy/terraform/environments/dev/tfplan', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Terraform Plan (Dev)\n\`\`\`\n${plan}\n\`\`\``
+            });
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Terraform Plan (Prod)
+  # ─────────────────────────────────────────────────────────────────────────
+  plan-prod:
+    name: Plan Prod Infrastructure
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    needs: validate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init (Prod)
+        run: |
+          cd deploy/terraform/environments/prod
+          terraform init
+
+      - name: Terraform Plan (Prod)
+        run: |
+          cd deploy/terraform/environments/prod
+          terraform plan \
+            -var="mlflow_tracking_username=${{ secrets.MLFLOW_USERNAME }}" \
+            -var="mlflow_tracking_password=${{ secrets.MLFLOW_PASSWORD }}" \
+            -var="api_username=${{ secrets.API_USERNAME }}" \
+            -var="api_password=${{ secrets.API_PASSWORD }}" \
+            -var="dagshub_app_token=${{ secrets.DAGSHUB_TOKEN }}" \
+            -out=tfplan -no-color
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: tfplan-prod
+          path: deploy/terraform/environments/prod/tfplan
+
+      - name: Comment PR with Plan
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('deploy/terraform/environments/prod/tfplan', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Terraform Plan (Prod)\n\`\`\`\n${plan}\n\`\`\``
+            });
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Terraform Apply (Dev) — Automático em push para develop
+  # ─────────────────────────────────────────────────────────────────────────
+  apply-dev:
+    name: Apply Dev Infrastructure
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: [validate, plan-dev]
+    environment:
+      name: development
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: tfplan-dev
+          path: deploy/terraform/environments/dev/
+
+      - name: Terraform Init (Dev)
+        run: |
+          cd deploy/terraform/environments/dev
+          terraform init
+
+      - name: Terraform Apply (Dev)
+        run: |
+          cd deploy/terraform/environments/dev
+          terraform apply -auto-approve tfplan
+
+      - name: Capture Outputs
+        run: |
+          cd deploy/terraform/environments/dev
+          terraform output -json > outputs.json
+
+      - name: Upload Outputs
+        uses: actions/upload-artifact@v3
+        with:
+          name: outputs-dev
+          path: deploy/terraform/environments/dev/outputs.json
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Terraform Apply (Prod) — Manual approval em push para main
+  # ─────────────────────────────────────────────────────────────────────────
+  apply-prod:
+    name: Apply Prod Infrastructure
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [validate, plan-prod]
+    environment:
+      name: production
+      # Requer aprovação manual antes de fazer apply
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: tfplan-prod
+          path: deploy/terraform/environments/prod/
+
+      - name: Terraform Init (Prod)
+        run: |
+          cd deploy/terraform/environments/prod
+          terraform init
+
+      - name: Terraform Apply (Prod)
+        run: |
+          cd deploy/terraform/environments/prod
+          terraform apply -auto-approve tfplan \
+            -var="mlflow_tracking_username=${{ secrets.MLFLOW_USERNAME }}" \
+            -var="mlflow_tracking_password=${{ secrets.MLFLOW_PASSWORD }}" \
+            -var="api_username=${{ secrets.API_USERNAME }}" \
+            -var="api_password=${{ secrets.API_PASSWORD }}" \
+            -var="dagshub_app_token=${{ secrets.DAGSHUB_TOKEN }}"
+
+      - name: Capture Outputs
+        run: |
+          cd deploy/terraform/environments/prod
+          terraform output -json > outputs.json
+
+      - name: Upload Outputs
+        uses: actions/upload-artifact@v3
+        with:
+          name: outputs-prod
+          path: deploy/terraform/environments/prod/outputs.json
+
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "✅ Prod Infrastructure Deployed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Prod Infrastructure Deployed*\n*Commit:* ${{ github.sha }}\n*Author:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK

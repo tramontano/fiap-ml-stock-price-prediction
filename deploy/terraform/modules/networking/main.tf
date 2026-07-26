@@ -18,6 +18,9 @@ locals {
     Environment = var.environment
     ManagedBy   = "terraform"
   })
+
+  # Determina quantos NAT Gateways criar baseado no ambiente
+  nat_gateway_azs = var.nat_gateway_per_az ? var.azs : [var.azs[0]]
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -82,21 +85,30 @@ resource "aws_subnet" "private" {
 # ─────────────────────────────────────────────────────────────────────────────
 # NAT Gateway — Permite que as subnets privadas façam requests para a internet
 # (ex: download do modelo do S3, chamadas ao yfinance) sem serem acessíveis.
+#
+# Em DEV: Um único NAT Gateway (reduz custo em ~$32/mês)
+# Em PROD: Um NAT Gateway por AZ (alta disponibilidade, sem SPOF)
 # ─────────────────────────────────────────────────────────────────────────────
 resource "aws_eip" "nat" {
+  for_each = toset(local.nat_gateway_azs)
+
   domain = "vpc"
 
   tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-nat-eip"
+    Name = "${local.name_prefix}-nat-eip-${each.value}"
   })
+
+  depends_on = [aws_internet_gateway.main]
 }
 
 resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id # Associado à primeira subnet pública
+  for_each = toset(local.nat_gateway_azs)
+
+  allocation_id = aws_eip.nat[each.value].id
+  subnet_id     = aws_subnet.public[index(var.azs, each.value)].id
 
   tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-nat-gw"
+    Name = "${local.name_prefix}-nat-gw-${each.value}"
   })
 
   depends_on = [aws_internet_gateway.main]
@@ -128,16 +140,20 @@ resource "aws_route_table_association" "public" {
 }
 
 # Privada: tráfego 0.0.0.0/0 vai para o NAT Gateway (saída segura)
+# Em DEV: Uma única route table com um NAT
+# Em PROD: Uma route table por AZ, cada uma com seu NAT (alta disponibilidade)
 resource "aws_route_table" "private" {
+  for_each = var.nat_gateway_per_az ? toset(var.azs) : toset(["default"])
+
   vpc_id = aws_vpc.main.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
+    nat_gateway_id = var.nat_gateway_per_az ? aws_nat_gateway.main[each.value].id : aws_nat_gateway.main[var.azs[0]].id
   }
 
   tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-rt-private"
+    Name = var.nat_gateway_per_az ? "${local.name_prefix}-rt-private-${each.value}" : "${local.name_prefix}-rt-private"
   })
 }
 
@@ -145,7 +161,7 @@ resource "aws_route_table_association" "private" {
   count = length(aws_subnet.private)
 
   subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private.id
+  route_table_id = var.nat_gateway_per_az ? aws_route_table.private[var.azs[count.index]].id : aws_route_table.private["default"].id
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -187,16 +203,16 @@ resource "aws_security_group" "alb" {
   })
 }
 
-# SG do ECS: aceita tráfego SOMENTE do ALB na porta 8000 (FastAPI/Uvicorn)
+# SG do ECS: aceita tráfego SOMENTE do ALB na porta 8001 (FastAPI/Uvicorn)
 resource "aws_security_group" "ecs" {
   name        = "${local.name_prefix}-sg-ecs"
-  description = "Permite trafego apenas do ALB na porta 8000"
+  description = "Permite trafego apenas do ALB na porta 8001 (compatível com docker-compose.yml)"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "FastAPI via ALB"
-    from_port       = 8000
-    to_port         = 8000
+    description     = "FastAPI via ALB (porta 8001)"
+    from_port       = 8001
+    to_port         = 8001
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }

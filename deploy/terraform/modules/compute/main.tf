@@ -5,6 +5,8 @@
 #   Internet -> ALB (Public Subnets) -> ECS Service Fargate (Private Subnets)
 # =============================================================================
 
+data "aws_caller_identity" "current" {}
+
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
 
@@ -52,6 +54,7 @@ resource "aws_lb_target_group" "api" {
     timeout             = 10
     interval            = 30
     matcher             = "200,503" # 503 é aceito temporariamente se estiver a carregar os modelos
+    port                = tostring(var.container_port)
   }
 
   tags = merge(local.common_tags, {
@@ -115,6 +118,16 @@ resource "aws_ecs_task_definition" "api" {
       cpu       = var.task_cpu
       memory    = var.task_memory
       essential = true
+      # Adicionar dados de contexto para logs estruturados
+      environment = concat(
+        local.container_env_vars,
+        [
+          {
+            name  = "AWS_REGION"
+            value = data.aws_caller_identity.current.region
+          }
+        ]
+      )
       
       portMappings = [
         {
@@ -124,7 +137,13 @@ resource "aws_ecs_task_definition" "api" {
         }
       ]
 
-      environment = local.container_env_vars
+      # Injetar secrets via AWS Secrets Manager (quando fornecidos)
+      secrets = [
+        for secret_name, secret_config in var.api_secrets : {
+          name      = secret_name
+          valueFrom = "arn:aws:secretsmanager:${data.aws_caller_identity.current.region}:${data.aws_caller_identity.current.account_id}:secret:${secret_config.secret_name}:${secret_config.secret_key}::"
+        }
+      ]
 
       logConfiguration = {
         logDriver = "awslogs"

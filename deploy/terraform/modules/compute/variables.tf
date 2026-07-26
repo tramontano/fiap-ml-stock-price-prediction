@@ -53,9 +53,9 @@ variable "container_image" {
 }
 
 variable "container_port" {
-  description = "Porta onde a API expõe o serviço."
+  description = "Porta onde a API expõe o serviço (deve corresponder à porta da aplicação)."
   type        = number
-  default     = 8000
+  default     = 8001 # Compatível com docker-compose.yml e Dockerfile
 }
 
 variable "task_cpu" {
@@ -83,9 +83,25 @@ variable "max_capacity" {
 }
 
 variable "api_env_vars" {
-  description = "Variáveis de ambiente adicionais para o container."
+  description = "Variáveis de ambiente simples para o container (não-sensíveis)."
   type        = map(string)
   default     = {}
+}
+
+variable "api_secrets" {
+  description = "Mapa de secrets a serem injetados via AWS Secrets Manager (prod) ou variáveis de ambiente (dev)."
+  type        = map(object({
+    secret_name = string
+    secret_key  = string
+  }))
+  default = {}
+  sensitive = true
+}
+
+variable "container_image_tag" {
+  description = "Tag da imagem Docker (ex: 'latest' em dev, 'v1.0.0' em prod)."
+  type        = string
+  default     = "latest"
 }
 
 variable "tags" {

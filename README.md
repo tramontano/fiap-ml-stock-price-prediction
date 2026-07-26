@@ -321,6 +321,25 @@ O projeto integra três registries complementares para garantir rastreabilidade,
 
 ---
 
+## 🏗️ Arquitetura e Infraestrutura (AWS)
+
+A infraestrutura foi desenhada para nível de produção, garantindo **Alta Disponibilidade (HA)**, **Segurança** e **Escalabilidade**.
+
+![Architecture](deploy/terraform/architecture.png)
+
+### Destaques da Infraestrutura:
+- **Compute**: Amazon ECS com Fargate (Serverless Containers).
+- **Networking**: VPC Privada, ALB Público, NAT Gateway por AZ.
+- **Segurança**: TLS/HTTPS (ACM), AWS Secrets Manager, IAM (Least Privilege).
+- **Auto Scaling**: Target Tracking (CPU, Memória, Requisições) e Step Scaling.
+- **Backup/DR**: S3 Cross-Region Replication (CRR) e AWS Backup.
+- **Observabilidade**: CloudWatch Logs, Insights e Alarmes (5xx, Latência).
+
+📖 **[Ver Documentação Completa da Infraestrutura](deploy/terraform/README.md)**
+📖 **[Ver Guia de Deployment e Operações](deploy/terraform/DEPLOYMENT_GUIDE.md)**
+
+---
+
 ## Instalação e Configuração
 
 ### Pré-requisitos

@@ -70,6 +70,25 @@ resource "aws_iam_role_policy" "execution_secrets" {
   policy = data.aws_iam_policy_document.execution_secrets.json
 }
 
+# Política adicional: permite ler secrets do Secrets Manager com prefixo do projeto
+data "aws_iam_policy_document" "execution_secrets_manager" {
+  statement {
+    sid    = "ReadSecretsManager"
+    effect = "Allow"
+    actions = [
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:DescribeSecret",
+    ]
+    resources = ["arn:aws:secretsmanager:*:*:secret:${local.name_prefix}-*"]
+  }
+}
+
+resource "aws_iam_role_policy" "execution_secrets_manager" {
+  name   = "${local.name_prefix}-execution-secrets-manager"
+  role   = aws_iam_role.ecs_execution.id
+  policy = data.aws_iam_policy_document.execution_secrets_manager.json
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. ECS Task Role
 # Usada pela APLICAÇÃO (FastAPI) para:
@@ -108,6 +127,21 @@ data "aws_iam_policy_document" "task_s3_models" {
       "s3:GetObjectVersion",
     ]
     resources = ["${var.models_bucket_arn}/*"]
+  }
+
+  # Permissão de escrita para sincronização de modelos e ponteiros de estágio
+  # Permite que a API promova modelos (Challenger -> Champion) e sincronize artefatos
+  statement {
+    sid    = "WriteModelsArtifacts"
+    effect = "Allow"
+    actions = [
+      "s3:PutObject",
+      "s3:PutObjectAcl",
+    ]
+    resources = [
+      "${var.models_bucket_arn}/runs/*",      # Artefatos de modelo (model.keras, scaler.pkl)
+      "${var.models_bucket_arn}/pointers/*",  # Ponteiros de estágio (champion.json, challenger.json)
+    ]
   }
 }
 
