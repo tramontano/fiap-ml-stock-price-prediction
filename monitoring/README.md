@@ -1,6 +1,6 @@
 # Observabilidade e Monitoramento (`monitoring/`)
 
-Este diretório armazena todos os arquivos de configuração de monitoramento e observabilidade em tempo real para o serviço de predição de preços de ações. A stack de monitoramento é composta por Prometheus e Grafana.
+Este diretório armazena todos os arquivos de configuração da *stack* de observabilidade e monitoramento em tempo real para o serviço de predição de preços de ações. A infraestrutura de monitoramento foi expandida e agora é composta por **Prometheus**, **Grafana**, **Loki** e **Promtail**, cobrindo métricas de sistema, métricas de negócio, métricas de orquestração de dados e centralização de logs.
 
 ---
 
@@ -8,27 +8,54 @@ Este diretório armazena todos os arquivos de configuração de monitoramento e 
 
 O diretório `monitoring/` está estruturado da seguinte forma:
 
-| Diretório/Arquivo | Descrição Principal |
+| Diretório | Descrição Principal |
 | :--- | :--- |
-| `grafana/` | Configurações de provisionamento de *dashboards* e *datasources* do Grafana. |
-| `prometheus/` | Configurações de coleta de métricas (scraping) do Prometheus. |
+| `grafana/` | Configurações de provisionamento de *dashboards* e *datasources* do Grafana, permitindo configuração automática na inicialização. |
+| `prometheus/` | Configurações de coleta de métricas (*scraping*) do Prometheus, além do mapeamento de métricas do Airflow (StatsD). |
+| `loki/` | Configuração do servidor de agregação de logs Loki. |
+| `promtail/` | Configuração do agente Promtail responsável por coletar logs de contêineres e do sistema, enviando-os para o Loki. |
 
 ---
 
 ## Descrição dos Módulos e Arquivos
 
 ### 1. Grafana (`grafana/`)
-*   **`provisioning/`**: Contém subpastas que definem a configuração automática do Grafana ao inicializar:
-    *   `datasources/`: Configura o Prometheus local como fonte de dados padrão.
-    *   `dashboards/`: Contém arquivos JSON de definição dos painéis visuais para monitorar latência de requisições, status HTTP, taxa de erros da API e estatísticas de predição de preços.
+
+O Grafana atua como a principal interface de visualização, provisionado de forma automatizada:
+
+* **`provisioning/datasources/`**: Define as fontes de dados padrão.
+  * `prometheus.yml`: Configura o Prometheus local como fonte de métricas principal.
+  * `loki.yml`: Configura o Loki para a consulta centralizada de logs.
+  * `s3_minio.yml`: Adiciona o MinIO (S3) como fonte de dados (via plugin `parquet`) para leitura direta de arquivos armazenados no bucket *bronze*.
+* **`provisioning/dashboards/`**: Contém a definição da organização visual e os arquivos JSON de *dashboards*.
+  * `dashboards.yml`: Associa os *dashboards* JSON à pasta lógica "MLOps LSTM" na interface do Grafana, com atualizações automáticas (`allowUiUpdates: true`).
+  * `json/FastAPI.json`: Painel focado na observabilidade da API de inferência, exibindo contagem de requisições, latência (p99), status HTTP, RPS e uso de recursos do processo Python.
+  * `json/Process Exporter.json`: Painel de métricas de *runtime* (Go/Prometheus), focado em uso de recursos.
+  * `json/Docker_logs.json`: Painel integrado ao Loki para visualização centralizada da saída padrão (`stdout`) dos contêineres Docker.
 
 ### 2. Prometheus (`prometheus/`)
-*   **`prometheus.yml`**: Define o comportamento de coleta do Prometheus. Especifica a frequência de amostragem (ex: 15s) e o *target* (alvo) da coleta, que aponta diretamente para o endpoint de métricas exposto pela API FastAPI (normalmente rodando na porta `8000` em `/metrics`).
+
+O Prometheus é o núcleo de armazenamento de séries temporais e coleta de métricas:
+
+* **`prometheus.yml`**: Define o comportamento de coleta com intervalo de 15 segundos. Ele monitora a API de predição (`model:8001`).
+
+### 3. Loki e Promtail (`loki/` e `promtail/`)
+
+Esta dupla é responsável pela centralização e consulta eficiente de logs de toda a infraestrutura:
+
+* **`loki/loki-config.yaml`**: Configura o servidor Loki para operar com armazenamento de objetos compatível com S3 (MinIO) no bucket `loki-data`. Ele também gerencia a retenção, indexação e regras de agregação.
+* **`promtail/promtail-config.yaml`**: O agente Promtail é configurado para capturar os logs dos contêineres Docker (via `/var/run/docker.sock`) e extrair *labels* automáticas como o nome do contêiner, além de monitorar logs de sistema local. Todos os logs capturados são encaminhados (*pushed*) para a API do Loki.
 
 ---
 
-## Fluxo de Operação
+## Fluxo de Operação e Observabilidade
 
-1.  **Exposição de Métricas**: A API FastAPI (configurada em `src/api/main.py`) exporta métricas de sistema e de negócio através da biblioteca integrada do Prometheus.
-2.  **Coleta (Scraping)**: O contêiner do Prometheus lê o arquivo `prometheus/prometheus.yml`, identifica o endereço da API e faz requisições periódicas a `/metrics`, persistindo os dados temporalmente.
-3.  **Visualização**: O Grafana inicia, lê as configurações de provisionamento locais e renderiza os gráficos em tempo real utilizando os dados expostos pelo Prometheus, permitindo que a equipe de MLOps acompanhe o estado de saúde do sistema de serving.
+1. **Coleta de Métricas**:
+    * A API FastAPI (configurada em `src/api/main.py`) exporta métricas através de seu *endpoint* `/metrics`.
+    * O contêiner do Prometheus faz *scraping* periódico de todos esses *targets* e armazena as séries temporais.
+2. **Centralização de Logs**:
+    * O Promtail intercepta o fluxo de saída (`stdout`/`stderr`) de todos os contêineres em execução no *host* Docker.
+    * Os logs são enriquecidos com metadados (como o nome do serviço) e transmitidos continuamente para o Loki, que os indexa e armazena no MinIO.
+3. **Visualização e Monitoramento Contínuo**:
+    * O Grafana inicializa com todas as fontes de dados (Prometheus, Loki, MinIO) já conectadas.
+    * Os *dashboards* são carregados na pasta "MLOps LSTM", oferecendo à equipe de MLOps visões unificadas sobre a saúde da API de inferência, o desempenho e a depuração imediata de erros através dos logs centralizados.
