@@ -287,23 +287,6 @@ O projeto integra três registries complementares para garantir rastreabilidade,
 
 ---
 
-## Arquitetura e Infraestrutura (AWS)
-
-A infraestrutura foi desenhada para nível de produção, garantindo **Alta Disponibilidade (HA)**, **Segurança** e **Escalabilidade**.
-
-![Architecture](deploy/terraform/architecture.png)
-
-### Destaques da Infraestrutura
-
-- **Compute**: Amazon ECS com Fargate (Serverless Containers).
-- **Networking**: VPC Privada, ALB Público, NAT Gateway por AZ.
-- **Segurança**: TLS/HTTPS (ACM), AWS Secrets Manager, IAM (Least Privilege).
-- **Auto Scaling**: Target Tracking (CPU, Memória, Requisições) e Step Scaling.
-- **Backup/DR**: S3 Cross-Region Replication (CRR) e AWS Backup.
-- **Observabilidade**: CloudWatch Logs, Insights e Alarmes (5xx, Latência).
-
----
-
 ## Instalação e Configuração
 
 ### Pré-requisitos
@@ -337,7 +320,7 @@ make install
 
 Este comando executa `uv sync`, instalando todas as dependências declaradas em `pyproject.toml` com lock determinístico via `uv.lock`.
 
-#### **4. Inicie a Stack Local**
+#### **4. Inicie a Stack**
 
 ```bash
 make start
@@ -350,7 +333,7 @@ Inicia containers de infraestrutura:
 - **Prometheus:** Coleta de métricas
 - **Grafana:** Visualização de métricas
 
-#### **5. Execute a API em Desenvolvimento**
+#### **5. Execute a API em Desenvolvimento local**
 
 ```bash
 make run
@@ -382,7 +365,7 @@ A API FastAPI expõe endpoints para inferência, gestão de modelos e monitorame
 
 ### Endpoints de Inferência
 
-#### `GET /health`
+#### `GET /api/v1/health`
 
 Verificação de saúde da aplicação.
 
@@ -393,7 +376,7 @@ Verificação de saúde da aplicação.
   "status": "ok",
   "service": "fiap-ml-stock-price-prediction",
   "version": "1.0.0",
-  "model_id": "abc123def456",
+  "model_id": "c924005629544d7796c577205381b99e",
   "ready": true
 }
 ```
@@ -415,12 +398,12 @@ Previsão de preço para o próximo dia.
 ```json
 {
   "ticker": "JNJ",
-  "predicted_return": 0.0145,
-  "predicted_return_std_dev": 0.0032,
-  "confidence_score": 94.2,
-  "predicted_price_usd": 158.75,
-  "prediction_date_iso": "2026-07-27",
-  "prediction_model": "abc123def456"
+  "predicted_return": 0.0014660691376775503,
+  "predicted_return_std_dev": 0.002930610440671444,
+  "confidence_score": 85.3469467163086,
+  "predicted_price_usd": 259.65008811055304,
+  "prediction_date_iso": "2026-07-24T00:00:00",
+  "prediction_model": "c924005629544d7796c577205381b99e"
 }
 ```
 
@@ -445,24 +428,36 @@ Informações de Champion e Challenger.
 ```json
 {
   "champion": {
-    "run_id": "abc123",
+    "run_id": "c924005629544d7796c577205381b99e",
     "stage": "champion",
     "metrics": {
-      "rmse": 0.0234,
-      "mae": 0.0156,
-      "mape": 2.31
+      "val_mae": 0.008362896740436554,
+      "rmse": 0.01230384094529815,
+      "mape": 28366668603.627247,
+      "r2": -0.012090515557643622,
+      "stopped_epoch": 11,
+      "loss": 0.0002171913074562326,
+      "mae": 0.010508716106414795,
+      "val_loss": 0.00015138450544327497,
+      "restored_epoch": 8
     },
-    "trained_at": "2026-07-20T14:30:00Z"
+    "trained_at": "2026-06-19 20:24:36.361521"
   },
   "challenger": {
-    "run_id": "def456",
+    "run_id": "e90f4a857251476ea263723651309caa",
     "stage": "challenger",
     "metrics": {
-      "rmse": 0.0221,
-      "mae": 0.0148,
-      "mape": 2.18
+      "stopped_epoch": 18,
+      "loss": 0.0002262470661662519,
+      "mae": 0.010547933168709278,
+      "val_loss": 0.00014877802459523082,
+      "val_mae": 0.008299628272652626,
+      "rmse": 0.012197459853919679,
+      "mape": 22305811603.346344,
+      "r2": 0.005335236168692803,
+      "restored_epoch": 15
     },
-    "trained_at": "2026-07-25T10:15:00Z"
+    "trained_at": "2026-06-18 00:21:20.353847"
   }
 }
 ```
@@ -475,7 +470,7 @@ Promove Challenger para Champion.
 
 ```json
 {
-  "run_id": "def456"
+  "run_id": "e90f4a857251476ea263723651309caa"
 }
 ```
 
@@ -483,8 +478,8 @@ Promove Challenger para Champion.
 
 ```json
 {
-  "promoted_run_id": "def456",
-  "previous_champion_run_id": "abc123",
+  "promoted_run_id": "e90f4a857251476ea263723651309caa",
+  "previous_champion_run_id": "c924005629544d7796c577205381b99e",
   "new_challenger_run_id": null
 }
 ```
@@ -497,17 +492,123 @@ Protegidos por autenticação Basic Auth, estes endpoints orquestram o pipeline 
 
 Extrai dados Yahoo Finance → Bronze.
 
+**Request:**
+
+```json
+{
+  "ticker": "JNJ",
+  "start_date": "1985-01-01",
+  "end_date": "2025-12-31"
+}
+```
+
+**Resposta:**
+
+```json
+{
+  "parquet_name": "JNJ/19850102_20251230.parquet",
+  "rows": 10329,
+  "ticker": "JNJ"
+}
+```
+
 #### `POST /api/v1/tasks/transform_data`
 
 Processa Bronze → Silver → Gold.
+
+**Request:**
+
+```json
+{
+  "ticker": "JNJ",
+  "parquet_name": "JNJ/19850102_20251230.parquet"
+}
+```
+
+**Resposta:**
+
+```json
+{
+  "parquet_name": "JNJ/19850102_20251230.parquet",
+  "ticker": "JNJ",
+  "silver_rows": 10329,
+  "gold_rows": 10329
+}
+```
 
 #### `POST /api/v1/tasks/optimize_param`
 
 Executa otimização Optuna.
 
+**Request:**
+
+```json
+{
+  "parquet_name": "JNJ/19850102_20251230.parquet"
+}
+```
+
+**Resposta:**
+
+```json
+{
+  "run_id": "7643c78e87e746818fd4f5c329e17086",
+  "best_params": {
+    "units": 128,
+    "dropout_rate": 0.23408386266490702,
+    "learning_rate": 0.0004927279423655442,
+    "batch_size": 64,
+    "activation": "leaky_relu"
+  }
+}
+```
+
 #### `POST /api/v1/tasks/train_new_model`
 
 Treina novo LSTM, marca como Challenger.
+
+**Request:**
+
+```json
+{
+  "params": {
+    "units": 128,
+    "dropout_rate": 0.23408386266490702,
+    "learning_rate": 0.0004927279423655442,
+    "batch_size": 64,
+    "activation": "leaky_relu"
+  },
+  "parquet_name": "JNJ/19850102_20251230.parquet"
+}
+```
+
+**Resposta:**
+
+```json
+{
+  "run_id": "e90f4a857251476ea263723651309caa"
+}
+```
+
+#### `POST /api/v1/tasks/promote_challenger`
+
+Promove o modelo Challenger para Champion e sincroniza com S3.
+
+**Request:**
+
+```json
+{
+  "run_id": "c924005629544d7796c577205381b99e"
+}
+```
+
+**Resposta:**
+
+```json
+{
+  "run_id": "c924005629544d7796c577205381b99e"
+}
+```
 
 ---
 
@@ -521,7 +622,6 @@ A solução implementa observabilidade em múltiplas camadas: infraestrutura, ap
 
 - Scraping da API a cada 15 segundos
 - Retenção de 15 dias de histórico
-- Alertas baseados em regras (ex: latência > 1s)
 
 **Grafana:** Visualização e alertas
 
@@ -533,27 +633,6 @@ A solução implementa observabilidade em múltiplas camadas: infraestrutura, ap
 
 - Logs estruturados em JSON da aplicação
 - Correlação de logs com métricas
-
-### Métricas Expostas
-
-**Infraestrutura:**
-
-- `http_requests_total` - Total de requisições por endpoint
-- `http_request_duration_seconds` - Latência de requisições (histograma)
-- `process_resident_memory_bytes` - Memória utilizada pelo processo
-- `process_cpu_seconds_total` - Tempo de CPU consumido
-
-**Aplicação:**
-
-- `model_drift` - Desvio padrão das predições (MC Dropout)
-- `prediction_requests_total` - Requisições de predição por ticker
-- `last_predicted_price_usd` - Último preço predito (gauge)
-
-**Negócio:**
-
-- Taxa de confiança média das predições
-- Distribuição de tickers consultados
-- Tempo de resposta P95/P99
 
 ### Acesso aos Dashboards
 
@@ -635,46 +714,3 @@ fiap-ml-stock-price-prediction/
 | `make start` | Inicia stack local com Docker Compose |
 | `make stop` | Para e remove containers |
 | `make clean` | Remove caches e arquivos temporários |
-
----
-
-## Guia de Produção
-
-### Deploy na AWS
-
-O projeto inclui infraestrutura como código (Terraform) em `deploy/terraform/` para provisionar ambiente em AWS.
-
-**Arquitetura AWS:**
-
-- **VPC:** Rede isolada com subnets públicas (ALB) e privadas (ECS)
-- **Compute:** ECS Fargate com auto-scaling baseado em CPU
-- **Storage:** S3 para data lake (Bronze/Silver/Gold) e artefatos de modelos
-- **Registry:** ECR para imagens Docker com scan de vulnerabilidades
-- **Observabilidade:** CloudWatch para métricas e logs
-
-**Deploy:**
-
-```bash
-cd deploy/terraform/environments/prod
-terraform init
-terraform plan
-terraform apply
-```
-
-### Monitoramento em Produção
-
-- **Métricas:** AWS CloudWatch ou Managed Prometheus
-- **Logs:** CloudWatch Logs ou ELK Stack
-- **Alertas:** SNS para notificações de falhas
-- **Dashboards:** CloudWatch Dashboards ou Grafana
-
-### Rollback de Modelos
-
-Em caso de degradação de performance do Champion:
-
-```bash
-# Reverter para Champion anterior
-curl -X PATCH http://api.example.com/api/v1/model \
-  -H "Authorization: Basic <credentials>" \
-  -d '{"run_id": "<previous_champion_run_id>"}'
-```

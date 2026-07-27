@@ -343,6 +343,7 @@ async def task_optimize_param(
                 n_trials=n_trials,
                 n_jobs=-1,
             )
+        client.end_run()
 
         logger.info("\nOtimização concluída!")
         logger.info(f"Melhores hiperparâmetros encontrados: {study.best_params}")
